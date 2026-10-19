@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ui-dark: #0a0a0f;
+  --ui-card: #12121a;
+  --ui-border: #2a2a3a;
+  --ui-accent: #00d4ff;
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--ui-dark);
+  color: #ffffff;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Prevent right-click context menu on canvas */
+canvas {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--ui-dark); }
+::-webkit-scrollbar-thumb { background: var(--ui-border); border-radius: 3px; }
