@@ -42,4 +42,52 @@ describe('SimulationLoop Integration', () => {
     const ball = sim.getBall()
     expect(ball.position.y).toBeGreaterThanOrEqual(0.11)
   })
+
+  it('charges shot power over time and releases dynamic shot', () => {
+    const sim = new SimulationLoop(home, away, 5)
+    const controlled = sim.simPlayers.find((p) => p.isControlled)
+    if (controlled) {
+      controlled.hasBall = true
+      sim.startChargingShot()
+      expect(sim.isChargingShot).toBe(true)
+      expect(sim.currentShotPower).toBe(20)
+
+      // Advance charging by 0.3 seconds
+      sim.updateShotCharge(0.3)
+      expect(sim.currentShotPower).toBeGreaterThan(50)
+
+      // Release shot
+      sim.releaseShot(0)
+      expect(sim.isChargingShot).toBe(false)
+      expect(sim.stats.shots[0]).toBe(1)
+    }
+  })
+
+  it('sets up set-pieces correctly and positions taker', () => {
+    const sim = new SimulationLoop(home, away, 5)
+    sim.setupSetPiece('CORNER', 0, { x: 33.5, y: 0.11, z: 52.0 })
+
+    expect(sim.stateMachine.getPhase()).toBe('SET_PIECE')
+    expect(sim.currentSetPiece).not.toBeNull()
+    expect(sim.currentSetPiece?.type).toBe('CORNER')
+    expect(sim.stats.corners[0]).toBe(1)
+    expect(sim.currentAnnouncement?.title).toBe('CORNER KICK')
+
+    // Taker should have ball and be positioned near the corner spot
+    const taker = sim.simPlayers.find((p) => p.id === sim.currentSetPiece?.takerId)
+    expect(taker).toBeDefined()
+    expect(taker?.hasBall).toBe(true)
+  })
+
+  it('allows direct passing to a clicked teammate', () => {
+    const sim = new SimulationLoop(home, away, 5)
+    const controlled = sim.simPlayers.find((p) => p.isControlled)!
+    controlled.hasBall = true
+
+    const teammate = sim.simPlayers.find((p) => p.teamIndex === 0 && p.id !== controlled.id)!
+    sim.performPassToTeammate(teammate.id)
+
+    expect(sim.controlledPlayerId).toBe(teammate.id)
+    expect(sim.lastTouchedPlayerId).toBe(controlled.id)
+  })
 })

@@ -28,7 +28,7 @@ export class MatchStateMachine {
 
     switch (this.phase) {
       case 'PRE_MATCH':
-        return to === 'KICK_OFF' || to === 'PLAYING'
+        return to === 'KICK_OFF' || to === 'PLAYING' || to === 'SET_PIECE'
       case 'KICK_OFF':
         return to === 'PLAYING' || to === 'SET_PIECE'
       case 'PLAYING':

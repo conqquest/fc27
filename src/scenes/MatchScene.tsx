@@ -23,12 +23,15 @@ const MatchEngineBridge: React.FC<{
   sim: SimulationLoop
   inputState: ReturnType<typeof useInput>
   keyBindings: ReturnType<typeof useSettingsStore.getState>['settings']['keys']
+  virtualMoveRef: React.MutableRefObject<Vec3>
+  virtualSprint: boolean
   onUpdate: () => void
-}> = ({ sim, inputState, keyBindings, onUpdate }) => {
+}> = ({ sim, inputState, keyBindings, virtualMoveRef, virtualSprint, onUpdate }) => {
   const lastShotTime = useRef(0)
   const lastPassTime = useRef(0)
   const lastSwitchTime = useRef(0)
   const lastTackleTime = useRef(0)
+  const wasShootPressed = useRef(false)
 
   useFrame((_, delta) => {
     // 1. Process movement inputs
@@ -39,27 +42,39 @@ const MatchEngineBridge: React.FC<{
     // Right on screen: +Z (towards Away goal on right)
     const moveVector: Vec3 = { x: 0, y: 0, z: 0 }
 
-    const isUp =
-      isKeyHeld(inputState, keyBindings.moveForward) ||
-      isKeyHeld(inputState, 'arrowup')
-    const isDown =
-      isKeyHeld(inputState, keyBindings.moveBackward) ||
-      isKeyHeld(inputState, 'arrowdown')
-    const isLeft =
-      isKeyHeld(inputState, keyBindings.moveLeft) ||
-      isKeyHeld(inputState, 'arrowleft')
-    const isRight =
-      isKeyHeld(inputState, keyBindings.moveRight) ||
-      isKeyHeld(inputState, 'arrowright')
+    const isArrowUp = isKeyHeld(inputState, 'arrowup')
+    const isArrowDown = isKeyHeld(inputState, 'arrowdown')
+    const isArrowLeft = isKeyHeld(inputState, 'arrowleft')
+    const isArrowRight = isKeyHeld(inputState, 'arrowright')
+    const isArrowMovement = isArrowUp || isArrowDown || isArrowLeft || isArrowRight
 
-    if (isUp) moveVector.x -= 1
-    if (isDown) moveVector.x += 1
-    if (isLeft) moveVector.z -= 1
-    if (isRight) moveVector.z += 1
+    const isW = isKeyHeld(inputState, keyBindings.moveForward) || isKeyHeld(inputState, 'w')
+    const isS = isKeyHeld(inputState, keyBindings.moveBackward) || isKeyHeld(inputState, 's')
+    const isA = isKeyHeld(inputState, keyBindings.moveLeft) || isKeyHeld(inputState, 'a')
+    const isD = isKeyHeld(inputState, keyBindings.moveRight) || isKeyHeld(inputState, 'd')
+
+    if (isArrowMovement) {
+      if (isArrowUp) moveVector.x -= 1
+      if (isArrowDown) moveVector.x += 1
+      if (isArrowLeft) moveVector.z -= 1
+      if (isArrowRight) moveVector.z += 1
+    } else {
+      if (isW) moveVector.x -= 1
+      if (isS) moveVector.x += 1
+      if (isA) moveVector.z -= 1
+      if (isD) moveVector.z += 1
+    }
+
+    // Add virtual joystick move vector
+    if (Math.abs(virtualMoveRef.current.x) > 0.05 || Math.abs(virtualMoveRef.current.z) > 0.05) {
+      moveVector.x += virtualMoveRef.current.x
+      moveVector.z += virtualMoveRef.current.z
+    }
 
     const isSprinting =
       isKeyHeld(inputState, keyBindings.sprint) ||
-      isKeyHeld(inputState, 'shift')
+      isKeyHeld(inputState, 'shift') ||
+      virtualSprint
 
     // Normalize diagonal movement
     const len = Math.hypot(moveVector.x, moveVector.z)
@@ -72,49 +87,77 @@ const MatchEngineBridge: React.FC<{
     const aimAngle = len > 0.001 ? Math.atan2(moveVector.x, moveVector.z) : undefined
 
     const now = Date.now()
-
-    // 2. Action: Pass (Left Click or J or Space when in possession)
     const controlled = sim.simPlayers.find((p) => p.id === sim.controlledPlayerId)
     const hasPossession = controlled?.hasBall || false
 
+    // 2. Action: Pass (A key if using arrow keys, J key, or Left-Click on grass)
     const isPassPressed =
       inputState.mouseButtons.has(0) ||
       isKeyHeld(inputState, 'j') ||
-      (hasPossession && isKeyHeld(inputState, ' '))
+      (isArrowMovement && isKeyHeld(inputState, 'a'))
 
     if (isPassPressed && now - lastPassTime.current > 280) {
       sim.performPass(false, false, aimAngle)
       lastPassTime.current = now
     }
 
-    // 3. Action: Through Ball (Q)
-    if (isKeyHeld(inputState, keyBindings.throughBall) && now - lastPassTime.current > 300) {
+    // 3. Action: Through Ball (Q, or W when using arrow keys)
+    const isThroughPressed =
+      isKeyHeld(inputState, keyBindings.throughBall) ||
+      (isArrowMovement && isKeyHeld(inputState, 'w'))
+
+    if (isThroughPressed && now - lastPassTime.current > 300) {
       sim.performPass(true, false, aimAngle)
       lastPassTime.current = now
     }
 
-    // 4. Action: Cross / Lofted (F)
-    if (isKeyHeld(inputState, keyBindings.crossOrLoft) && now - lastPassTime.current > 300) {
+    // 4. Action: Cross / Lofted (F, or D when using arrow keys)
+    const isCrossPressed =
+      isKeyHeld(inputState, keyBindings.crossOrLoft) ||
+      (isArrowMovement && isKeyHeld(inputState, 'd'))
+
+    if (isCrossPressed && now - lastPassTime.current > 300) {
       sim.performPass(false, true, aimAngle)
       lastPassTime.current = now
     }
 
-    // 5. Action: Shoot (E or K)
-    const isShootPressed = isKeyHeld(inputState, keyBindings.shoot) || isKeyHeld(inputState, 'k')
-    if (isShootPressed && now - lastShotTime.current > 350) {
-      sim.performShot(85, aimAngle)
-      lastShotTime.current = now
+    // 5. Action: Shoot with Hold-to-Charge (Spacebar when in possession, E, K)
+    const isShootKeyHeld =
+      (hasPossession && isKeyHeld(inputState, ' ')) ||
+      isKeyHeld(inputState, keyBindings.shoot) ||
+      isKeyHeld(inputState, 'k')
+
+    if (isShootKeyHeld) {
+      if (!wasShootPressed.current) {
+        sim.startChargingShot()
+        wasShootPressed.current = true
+      }
+    } else {
+      if (wasShootPressed.current) {
+        sim.releaseShot(aimAngle)
+        wasShootPressed.current = false
+        lastShotTime.current = now
+      }
     }
 
-    // 6. Action: Player Switch (Right Click or L)
-    const isSwitchPressed = inputState.mouseButtons.has(2) || isKeyHeld(inputState, 'l')
+    // 6. Action: Player Switch (Right Click, Tab, Q when defending, L)
+    const isSwitchPressed =
+      inputState.mouseButtons.has(2) ||
+      isKeyHeld(inputState, 'tab') ||
+      isKeyHeld(inputState, 'l') ||
+      (!hasPossession && isKeyHeld(inputState, 'q'))
+
     if (isSwitchPressed && now - lastSwitchTime.current > 250) {
       sim.switchControlledPlayer()
       lastSwitchTime.current = now
     }
 
-    // 7. Action: Tackle (Space when defending)
-    if (!hasPossession && isKeyHeld(inputState, keyBindings.tackle) && now - lastTackleTime.current > 350) {
+    // 7. Action: Tackle (Space when defending, or E when defending)
+    const isTacklePressed =
+      (!hasPossession && isKeyHeld(inputState, ' ')) ||
+      (!hasPossession && isKeyHeld(inputState, keyBindings.tackle))
+
+    if (isTacklePressed && now - lastTackleTime.current > 350) {
       sim.performTackle()
       lastTackleTime.current = now
     }
@@ -139,11 +182,15 @@ export default function MatchScene() {
     minute,
     half,
     showRadar,
+    announcement,
+    shotPower,
     setPhase,
     setMinute,
     setHalf,
     updateStats,
     toggleRadar,
+    setAnnouncement,
+    setShotPower,
     resetMatch,
   } = useMatchStore()
 
@@ -152,6 +199,8 @@ export default function MatchScene() {
 
   const { config: cameraConfig } = useCamera()
   const [renderTrigger, setRenderTrigger] = useState(0)
+  const [virtualSprint, setVirtualSprint] = useState(false)
+  const virtualMoveRef = useRef<Vec3>({ x: 0, y: 0, z: 0 })
 
   // Instantiate the SimulationLoop
   const sim = useMemo(() => {
@@ -162,8 +211,10 @@ export default function MatchScene() {
         setHalf(h)
       },
       onStatsUpdate: (s) => updateStats(s),
+      onAnnouncement: (a) => setAnnouncement(a),
+      onShotCharge: (ratio) => setShotPower(Math.round(ratio * 100)),
     })
-  }, [homeTeam, awayTeam, settings.matchDuration, setPhase, setMinute, setHalf, updateStats])
+  }, [homeTeam, awayTeam, settings.matchDuration, setPhase, setMinute, setHalf, updateStats, setAnnouncement, setShotPower])
 
   const handleUpdate = () => {
     setRenderTrigger((prev) => (prev + 1) % 100000)
@@ -226,7 +277,7 @@ export default function MatchScene() {
         {/* 3D Pitch and Stadium architecture */}
         <Stadium />
 
-        {/* 22 3D Animated Players with dynamic kits */}
+        {/* 22 3D Animated Players with dynamic kits & pass target highlights */}
         {sim.simPlayers.map((player) => (
           <PlayerMesh
             key={player.id}
@@ -240,6 +291,12 @@ export default function MatchScene() {
                 ? homeTeam.homeKit
                 : awayTeam.awayKit
             }
+            isPassTarget={player.id === sim.intendedPassTargetId}
+            onSelect={(playerId) => {
+              if (player.teamIndex === 0) {
+                sim.performPassToTeammate(playerId)
+              }
+            }}
           />
         ))}
 
@@ -254,11 +311,13 @@ export default function MatchScene() {
           sim={sim}
           inputState={inputState}
           keyBindings={settings.keys}
+          virtualMoveRef={virtualMoveRef}
+          virtualSprint={virtualSprint}
           onUpdate={handleUpdate}
         />
       </Canvas>
 
-      {/* ─── Modern Broadcast HUD Overlay ─── */}
+      {/* ─── Modern Broadcast HUD Overlay with Virtual Controls ─── */}
       <MatchHUD
         homeTeam={homeTeam}
         awayTeam={awayTeam}
@@ -271,6 +330,9 @@ export default function MatchScene() {
         players={sim.simPlayers}
         ballPosition={ballPos}
         showRadar={showRadar}
+        announcement={announcement}
+        shotPower={shotPower}
+        isSprinting={virtualSprint}
         onPauseToggle={() => {
           const curPhase = sim.stateMachine.getPhase()
           if (curPhase !== 'PAUSED') {
@@ -281,6 +343,17 @@ export default function MatchScene() {
             sim.stateMachine.transition(prev || 'PLAYING')
             setPhase(prev || 'PLAYING')
           }
+        }}
+        onPass={() => sim.performPass(false, false)}
+        onShootStart={() => sim.startChargingShot()}
+        onShootEnd={() => sim.releaseShot()}
+        onThroughBall={() => sim.performPass(true, false)}
+        onCross={() => sim.performPass(false, true)}
+        onSwitchPlayer={() => sim.switchControlledPlayer()}
+        onTackle={() => sim.performTackle()}
+        onSprintToggle={() => setVirtualSprint((prev) => !prev)}
+        onVirtualMove={(move) => {
+          virtualMoveRef.current = move
         }}
       />
 

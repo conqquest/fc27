@@ -124,11 +124,13 @@ describe('MatchClock', () => {
 })
 
 describe('MatchStateMachine', () => {
-  it('manages match lifecycle transitions', () => {
+  it('manages match lifecycle transitions including set pieces', () => {
     const sm = new MatchStateMachine()
     expect(sm.getPhase()).toBe('PRE_MATCH')
 
     expect(sm.transition('KICK_OFF')).toBe(true)
+    expect(sm.transition('PLAYING')).toBe(true)
+    expect(sm.transition('SET_PIECE')).toBe(true)
     expect(sm.transition('PLAYING')).toBe(true)
     expect(sm.transition('PAUSED')).toBe(true)
     expect(sm.transition('PLAYING')).toBe(true)
