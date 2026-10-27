@@ -32,13 +32,34 @@ const MatchEngineBridge: React.FC<{
 
   useFrame((_, delta) => {
     // 1. Process movement inputs
+    // Screen orientation relative to broadcast camera (Camera is at +X looking along -X):
+    // Up on screen: -X (towards far sideline)
+    // Down on screen: +X (towards near sideline)
+    // Left on screen: -Z (towards Home goal on left)
+    // Right on screen: +Z (towards Away goal on right)
     const moveVector: Vec3 = { x: 0, y: 0, z: 0 }
-    if (isKeyHeld(inputState, keyBindings.moveForward)) moveVector.z += 1
-    if (isKeyHeld(inputState, keyBindings.moveBackward)) moveVector.z -= 1
-    if (isKeyHeld(inputState, keyBindings.moveLeft)) moveVector.x -= 1
-    if (isKeyHeld(inputState, keyBindings.moveRight)) moveVector.x += 1
 
-    const isSprinting = isKeyHeld(inputState, keyBindings.sprint)
+    const isUp =
+      isKeyHeld(inputState, keyBindings.moveForward) ||
+      isKeyHeld(inputState, 'arrowup')
+    const isDown =
+      isKeyHeld(inputState, keyBindings.moveBackward) ||
+      isKeyHeld(inputState, 'arrowdown')
+    const isLeft =
+      isKeyHeld(inputState, keyBindings.moveLeft) ||
+      isKeyHeld(inputState, 'arrowleft')
+    const isRight =
+      isKeyHeld(inputState, keyBindings.moveRight) ||
+      isKeyHeld(inputState, 'arrowright')
+
+    if (isUp) moveVector.x -= 1
+    if (isDown) moveVector.x += 1
+    if (isLeft) moveVector.z -= 1
+    if (isRight) moveVector.z += 1
+
+    const isSprinting =
+      isKeyHeld(inputState, keyBindings.sprint) ||
+      isKeyHeld(inputState, 'shift')
 
     // Normalize diagonal movement
     const len = Math.hypot(moveVector.x, moveVector.z)
@@ -47,42 +68,53 @@ const MatchEngineBridge: React.FC<{
       moveVector.z /= len
     }
 
+    // Aim angle computed from movement direction if moving
+    const aimAngle = len > 0.001 ? Math.atan2(moveVector.x, moveVector.z) : undefined
+
     const now = Date.now()
 
-    // 2. Action: Pass (Left Click or bound key)
-    const isLeftClick = inputState.mouseButtons.has(0)
-    if (isLeftClick && now - lastPassTime.current > 350) {
-      sim.performPass(false, false)
+    // 2. Action: Pass (Left Click or J or Space when in possession)
+    const controlled = sim.simPlayers.find((p) => p.id === sim.controlledPlayerId)
+    const hasPossession = controlled?.hasBall || false
+
+    const isPassPressed =
+      inputState.mouseButtons.has(0) ||
+      isKeyHeld(inputState, 'j') ||
+      (hasPossession && isKeyHeld(inputState, ' '))
+
+    if (isPassPressed && now - lastPassTime.current > 280) {
+      sim.performPass(false, false, aimAngle)
       lastPassTime.current = now
     }
 
     // 3. Action: Through Ball (Q)
-    if (isKeyHeld(inputState, keyBindings.throughBall) && now - lastPassTime.current > 350) {
-      sim.performPass(true, false)
+    if (isKeyHeld(inputState, keyBindings.throughBall) && now - lastPassTime.current > 300) {
+      sim.performPass(true, false, aimAngle)
       lastPassTime.current = now
     }
 
     // 4. Action: Cross / Lofted (F)
-    if (isKeyHeld(inputState, keyBindings.crossOrLoft) && now - lastPassTime.current > 350) {
-      sim.performPass(false, true)
+    if (isKeyHeld(inputState, keyBindings.crossOrLoft) && now - lastPassTime.current > 300) {
+      sim.performPass(false, true, aimAngle)
       lastPassTime.current = now
     }
 
-    // 5. Action: Shoot (E)
-    if (isKeyHeld(inputState, keyBindings.shoot) && now - lastShotTime.current > 400) {
-      sim.performShot(80)
+    // 5. Action: Shoot (E or K)
+    const isShootPressed = isKeyHeld(inputState, keyBindings.shoot) || isKeyHeld(inputState, 'k')
+    if (isShootPressed && now - lastShotTime.current > 350) {
+      sim.performShot(85, aimAngle)
       lastShotTime.current = now
     }
 
-    // 6. Action: Player Switch (Right Click)
-    const isRightClick = inputState.mouseButtons.has(2)
-    if (isRightClick && now - lastSwitchTime.current > 300) {
+    // 6. Action: Player Switch (Right Click or L)
+    const isSwitchPressed = inputState.mouseButtons.has(2) || isKeyHeld(inputState, 'l')
+    if (isSwitchPressed && now - lastSwitchTime.current > 250) {
       sim.switchControlledPlayer()
       lastSwitchTime.current = now
     }
 
-    // 7. Action: Tackle (Space)
-    if (isKeyHeld(inputState, keyBindings.tackle) && now - lastTackleTime.current > 400) {
+    // 7. Action: Tackle (Space when defending)
+    if (!hasPossession && isKeyHeld(inputState, keyBindings.tackle) && now - lastTackleTime.current > 350) {
       sim.performTackle()
       lastTackleTime.current = now
     }
@@ -106,7 +138,6 @@ export default function MatchScene() {
     score,
     minute,
     half,
-    stats,
     showRadar,
     setPhase,
     setMinute,
@@ -177,19 +208,19 @@ export default function MatchScene() {
       {/* ─── 3D WebGL Canvas ─── */}
       <Canvas
         shadows={settings.graphics.shadows}
-        camera={{ position: [38, 22, 0], fov: 42 }}
+        camera={{ position: [28, 15, 0], fov: 38 }}
         className="w-full h-full"
       >
-        <ambientLight intensity={0.65} />
+        <ambientLight intensity={0.75} />
         <directionalLight
-          position={[25, 45, 25]}
-          intensity={1.2}
+          position={[20, 35, 20]}
+          intensity={1.5}
           castShadow={settings.graphics.shadows}
           shadow-mapSize={[2048, 2048]}
-          shadow-camera-left={-60}
-          shadow-camera-right={60}
-          shadow-camera-top={60}
-          shadow-camera-bottom={-60}
+          shadow-camera-left={-55}
+          shadow-camera-right={55}
+          shadow-camera-top={55}
+          shadow-camera-bottom={55}
         />
 
         {/* 3D Pitch and Stadium architecture */}

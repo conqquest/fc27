@@ -10,9 +10,9 @@ export interface CameraConfig {
 
 const DEFAULT_CONFIG: CameraConfig = {
   mode: 'broadcast',
-  distance: 38,
-  height: 22,
-  fov: 42,
+  distance: 28,
+  height: 15,
+  fov: 38,
   followBall: true,
 }
 
@@ -26,11 +26,11 @@ export function useCamera(initial?: Partial<CameraConfig>) {
     setConfig((prev) => {
       switch (mode) {
         case 'broadcast':
-          return { ...prev, mode, distance: 38, height: 22, fov: 42 }
+          return { ...prev, mode, distance: 28, height: 15, fov: 38 }
         case 'end-to-end':
-          return { ...prev, mode, distance: 48, height: 18, fov: 50 }
+          return { ...prev, mode, distance: 42, height: 14, fov: 45 }
         case 'tactical':
-          return { ...prev, mode, distance: 10, height: 60, fov: 45 }
+          return { ...prev, mode, distance: 8, height: 48, fov: 42 }
       }
     })
   }, [])

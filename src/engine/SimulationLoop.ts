@@ -151,10 +151,8 @@ export class SimulationLoop {
       const p = this.simPlayers[i]
       const phys = this.playerPhysicsMap.get(p.id)
       const anchor = homeAnchors[i] || { x: 0, y: 0, z: -20 }
-      // Clamp to own half for kick-off
       const pos = { x: anchor.x, y: 0, z: Math.min(-1.0, anchor.z) }
       if (kickingTeam === 0 && i === 9) {
-        // Striker at ball
         pos.x = 0
         pos.z = -0.5
       }
@@ -170,10 +168,8 @@ export class SimulationLoop {
       const p = this.simPlayers[11 + i]
       const phys = this.playerPhysicsMap.get(p.id)
       const anchor = awayAnchors[i] || { x: 0, y: 0, z: 20 }
-      // Clamp to own half for kick-off
       const pos = { x: anchor.x, y: 0, z: Math.max(1.0, anchor.z) }
       if (kickingTeam === 1 && i === 9) {
-        // Striker at ball
         pos.x = 0
         pos.z = 0.5
       }
@@ -205,7 +201,6 @@ export class SimulationLoop {
     let minDist = Infinity
 
     for (const p of homePlayers) {
-      // Don't switch to goalkeeper automatically
       if (p.role === 'goalkeeper') continue
       const dist = vec3.distance(p.position, this.ballPhysics.getPosition())
       if (dist < minDist) {
@@ -237,59 +232,73 @@ export class SimulationLoop {
     }
   }
 
-  public performPass(isThrough: boolean = false, isLofted: boolean = false): void {
+  public performPass(isThrough: boolean = false, isLofted: boolean = false, aimAngle?: number): void {
     const controlled = this.simPlayers.find((p) => p.id === this.controlledPlayerId)
-    if (!controlled || !controlled.hasBall) return
+    if (!controlled) return
+
+    const distToBall = vec3.distance(controlled.position, this.ballPhysics.getPosition())
+    // Allow pass if player has ball OR is within 2.2m of ball (First-time pass)
+    if (!controlled.hasBall && distToBall > 2.2) return
 
     const teammates = this.simPlayers.filter((p) => p.teamIndex === 0)
     const opponents = this.simPlayers.filter((p) => p.teamIndex === 1)
 
+    const effectiveAngle = aimAngle !== undefined ? aimAngle : controlled.rotation
+
     const target = this.passingSystem.selectTarget(
       controlled,
       teammates,
-      controlled.rotation,
+      effectiveAngle,
       opponents
     )
 
-    if (!target) return
-
-    controlled.hasBall = false
+    // Clear possession
+    for (const p of this.simPlayers) p.hasBall = false
     this.lastTouchedTeam = 0
     this.lastTouchedPlayerId = controlled.id
 
-    if (isLofted) {
-      const { velocity, loft } = this.passingSystem.computeLoftedPass(
-        controlled.position,
-        target.position,
-        controlled.playerData.attributes.crossing
-      )
-      this.ballPhysics.kick(velocity, 70, loft)
-    } else if (isThrough) {
-      const velocity = this.passingSystem.computeThroughBall(
-        controlled.position,
-        target,
-        controlled.playerData.attributes.vision
-      )
-      this.ballPhysics.kick(velocity, 80, 0.05)
-    } else {
-      const velocity = this.passingSystem.computeGroundPass(
-        controlled.position,
-        target.position,
-        1.0,
-        controlled.playerData.attributes.shortPassing
-      )
-      this.ballPhysics.kick(velocity, 75, 0.02)
-    }
+    if (target) {
+      if (isLofted) {
+        const { velocity, loft } = this.passingSystem.computeLoftedPass(
+          controlled.position,
+          target.position,
+          controlled.playerData.attributes.crossing
+        )
+        this.ballPhysics.kick(velocity, 75, loft)
+      } else if (isThrough) {
+        const velocity = this.passingSystem.computeThroughBall(
+          controlled.position,
+          target,
+          controlled.playerData.attributes.vision
+        )
+        this.ballPhysics.kick(velocity, 82, 0.05)
+      } else {
+        const velocity = this.passingSystem.computeGroundPass(
+          controlled.position,
+          target.position,
+          1.0,
+          controlled.playerData.attributes.shortPassing
+        )
+        this.ballPhysics.kick(velocity, 78, 0.02)
+      }
 
-    // Automatically prepare switch to pass receiver
-    this.switchControlledPlayer(target.id)
+      this.switchControlledPlayer(target.id)
+    } else {
+      // Direct kick in aim direction if no teammate is found
+      const kickDir = { x: Math.sin(effectiveAngle), y: 0.05, z: Math.cos(effectiveAngle) }
+      this.ballPhysics.kick(kickDir, 75, 0.05)
+    }
   }
 
-  public performShot(power: number = 75): void {
+  public performShot(power: number = 80, aimAngle?: number): void {
     const controlled = this.simPlayers.find((p) => p.id === this.controlledPlayerId)
-    if (!controlled || !controlled.hasBall) return
+    if (!controlled) return
 
-    controlled.hasBall = false
+    const distToBall = vec3.distance(controlled.position, this.ballPhysics.getPosition())
+    // Allow first-time shots if close to ball (< 2.4m)
+    if (!controlled.hasBall && distToBall > 2.4) return
+
+    for (const p of this.simPlayers) p.hasBall = false
     this.lastTouchedTeam = 0
     this.lastTouchedPlayerId = controlled.id
 
@@ -301,7 +310,7 @@ export class SimulationLoop {
       controlled.playerData.attributes
     )
 
-    this.ballPhysics.kick(shot.velocity, shot.power, 0.25, shot.spin)
+    this.ballPhysics.kick(shot.velocity, shot.power, 0.22, shot.spin)
 
     this.stats.shots[0] += 1
     if (shot.onTarget) {
@@ -317,14 +326,18 @@ export class SimulationLoop {
     const ballPos = this.ballPhysics.getPosition()
     const distToBall = vec3.distance(controlled.position, ballPos)
 
-    if (distToBall < 1.3) {
-      // Dispossess current holder
-      const currentHolder = this.simPlayers.find((p) => p.hasBall)
-      if (currentHolder) {
-        currentHolder.hasBall = false
-      }
+    // Lunge slightly towards the ball
+    const toBall = vec3.sub(ballPos, controlled.position)
+    if (vec3.length(toBall) > 0.1) {
+      const lungeDir = vec3.normalize(toBall)
+      controlled.position.x += lungeDir.x * 0.35
+      controlled.position.z += lungeDir.z * 0.35
+    }
 
-      // Claim ball
+    if (distToBall < 2.5) {
+      // Dispossess current holder
+      for (const p of this.simPlayers) p.hasBall = false
+
       controlled.hasBall = true
       this.lastTouchedTeam = 0
       this.lastTouchedPlayerId = controlled.id
@@ -377,7 +390,6 @@ export class SimulationLoop {
     // Update ball physics
     const prevBallPos = this.ballPhysics.getPosition()
     this.ballPhysics.update(clampedDt)
-    const currentBallPos = this.ballPhysics.getPosition()
 
     // Check goal detection
     const scoringTeam = this.goalDetector.check(this.getBall(), prevBallPos, Date.now())
@@ -415,7 +427,7 @@ export class SimulationLoop {
     this.stats.possession = this.possessionTracker.getPossession()
 
     // AI Team updates
-    const homeAIResult = this.teamAI.updateTeam(
+    this.teamAI.updateTeam(
       homePlayers,
       awayPlayers,
       simBall,
@@ -450,6 +462,7 @@ export class SimulationLoop {
 
     // Update each player physics and ball-player interactions
     let currentHolder = this.simPlayers.find((p) => p.hasBall)
+    const currentBallPos = this.ballPhysics.getPosition()
 
     for (const player of this.simPlayers) {
       const phys = this.playerPhysicsMap.get(player.id)
@@ -478,10 +491,12 @@ export class SimulationLoop {
       player.rotation = phys.getRotation()
       player.stamina = phys.getStamina()
 
-      // Ball possession acquisition if ball is loose
-      if (!currentHolder && this.ballPhysics.isGrounded()) {
-        const distToBall = vec3.distance(player.position, this.ballPhysics.getPosition())
-        if (distToBall < 0.7) {
+      // Smooth ball possession acquisition
+      if (!currentHolder && currentBallPos.y < 1.6) {
+        const distToBall = vec3.distance(player.position, currentBallPos)
+        // Generous pickup radius for controlled player (1.7m) and AI (1.3m)
+        const pickupRadius = player.isControlled ? 1.7 : 1.3
+        if (distToBall < pickupRadius) {
           player.hasBall = true
           currentHolder = player
           this.lastTouchedTeam = player.teamIndex
@@ -494,7 +509,7 @@ export class SimulationLoop {
     // If a player has ball possession, lock ball right at player's feet
     if (currentHolder) {
       const facingAngle = currentHolder.rotation
-      const dribbleDist = 0.45
+      const dribbleDist = 0.52
       const ballTargetX = currentHolder.position.x + Math.sin(facingAngle) * dribbleDist
       const ballTargetZ = currentHolder.position.z + Math.cos(facingAngle) * dribbleDist
 

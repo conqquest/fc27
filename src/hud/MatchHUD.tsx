@@ -131,9 +131,9 @@ export const MatchHUD: React.FC<MatchHUDProps> = ({
       )}
 
       {/* ─── Bottom Right: Key Controls Helper ─── */}
-      <div className="absolute bottom-6 right-6 bg-ui-dark/80 backdrop-blur-md border border-white/10 rounded-xl p-3 shadow-xl text-white/70 text-xs flex flex-col gap-1.5">
+      <div className="absolute bottom-6 right-6 bg-ui-dark/85 backdrop-blur-md border border-white/10 rounded-xl p-3 shadow-xl text-white/70 text-xs flex flex-col gap-1.5 min-w-[190px]">
         <div className="flex items-center justify-between gap-4">
-          <span className="font-semibold text-white/90">W A S D</span>
+          <span className="font-semibold text-white/90">W A S D / ↑↓←→</span>
           <span>Move</span>
         </div>
         <div className="flex items-center justify-between gap-4">
@@ -141,19 +141,19 @@ export const MatchHUD: React.FC<MatchHUDProps> = ({
           <span>Sprint</span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="font-semibold text-white/90">L-Click</span>
-          <span>Pass</span>
+          <span className="font-semibold text-white/90">L-Click / J</span>
+          <span className="text-ui-accent font-bold">Pass</span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="font-semibold text-white/90">E</span>
-          <span>Shoot</span>
+          <span className="font-semibold text-white/90">E / K</span>
+          <span className="text-emerald-400 font-bold">Shoot</span>
         </div>
         <div className="flex items-center justify-between gap-4">
           <span className="font-semibold text-white/90">Q / F</span>
           <span>Through / Cross</span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="font-semibold text-white/90">R-Click</span>
+          <span className="font-semibold text-white/90">R-Click / L</span>
           <span>Switch Player</span>
         </div>
         <div className="flex items-center justify-between gap-4">
