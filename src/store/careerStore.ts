@@ -16,51 +16,67 @@ interface CareerStoreState {
   getActiveSave: () => CareerSave | null
 }
 
-export const useCareerStore = create<CareerStoreState>()(persist(
-  (set, get) => ({
-    saves: [],
-    activeSaveId: null,
+export const useCareerStore = create<CareerStoreState>()(
+  persist(
+    (set, get) => ({
+      saves: [],
+      activeSaveId: null,
 
-    createSave: (managerName, teamId) => {
-      const id = generateSaveId()
-      const newSave: CareerSave = {
-        id,
-        managerName,
-        teamId,
-        season: 1,
-        createdAt: Date.now(),
-        lastPlayedAt: Date.now(),
-      }
-      set((s) => ({ saves: [...s.saves, newSave], activeSaveId: id }))
-      return id
-    },
+      createSave: (managerName, teamId) => {
+        const id = generateSaveId()
+        const newSave: CareerSave = {
+          id,
+          managerName,
+          teamId,
+          budget: 85000000,
+          reputation: 80,
+          currentSeason: {
+            year: 2026,
+            teamId,
+            leaguePosition: 1,
+            wins: 0,
+            draws: 0,
+            losses: 0,
+            goalsFor: 0,
+            goalsAgainst: 0,
+            transfersIn: [],
+            transfersOut: [],
+          },
+          pastSeasons: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }
+        set((s) => ({ saves: [...s.saves, newSave], activeSaveId: id }))
+        return id
+      },
 
-    loadSave: (id) => {
-      set({ activeSaveId: id })
-      set((s) => ({
-        saves: s.saves.map((save) =>
-          save.id === id ? { ...save, lastPlayedAt: Date.now() } : save
-        ),
-      }))
-    },
+      loadSave: (id) => {
+        set({ activeSaveId: id })
+        set((s) => ({
+          saves: s.saves.map((save) =>
+            save.id === id ? { ...save, updatedAt: Date.now() } : save
+          ),
+        }))
+      },
 
-    updateSave: (id, updates) =>
-      set((s) => ({
-        saves: s.saves.map((save) =>
-          save.id === id ? { ...save, ...updates, lastPlayedAt: Date.now() } : save
-        ),
-      })),
+      updateSave: (id, updates) =>
+        set((s) => ({
+          saves: s.saves.map((save) =>
+            save.id === id ? { ...save, ...updates, updatedAt: Date.now() } : save
+          ),
+        })),
 
-    deleteSave: (id) =>
-      set((s) => ({
-        saves: s.saves.filter((save) => save.id !== id),
-        activeSaveId: s.activeSaveId === id ? null : s.activeSaveId,
-      })),
+      deleteSave: (id) =>
+        set((s) => ({
+          saves: s.saves.filter((save) => save.id !== id),
+          activeSaveId: s.activeSaveId === id ? null : s.activeSaveId,
+        })),
 
-    getActiveSave: () => {
-      const { saves, activeSaveId } = get()
-      return saves.find((s) => s.id === activeSaveId) ?? null
-    },
-  }),
-  { name: 'fc27-career' }
-))
+      getActiveSave: () => {
+        const { saves, activeSaveId } = get()
+        return saves.find((s) => s.id === activeSaveId) || null
+      },
+    }),
+    { name: 'fc27-career' }
+  )
+)
