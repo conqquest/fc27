@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { MatchPhase, MatchEvent, MatchStats } from '../data/types'
 
 const DEFAULT_STATS: MatchStats = {
-  possession: [0, 0],
+  possession: [50, 50],
   shots: [0, 0],
   shotsOnTarget: [0, 0],
   corners: [0, 0],
@@ -10,9 +10,9 @@ const DEFAULT_STATS: MatchStats = {
   yellowCards: [0, 0],
   redCards: [0, 0],
   offsides: [0, 0],
-  passAccuracy: [0, 0],
-  tackles: [0, 0],
   saves: [0, 0],
+  passAccuracy: [85, 82],
+  distanceCovered: [0, 0],
 }
 
 interface MatchStoreState {
@@ -39,14 +39,14 @@ interface MatchStoreState {
 }
 
 export const useMatchStore = create<MatchStoreState>()((set) => ({
-  phase: 'pre-kick-off',
+  phase: 'PRE_MATCH',
   score: [0, 0],
-  minute: 0,
+  minute: 1,
   half: 1,
   events: [],
   stats: DEFAULT_STATS,
   controlledPlayerId: null,
-  showRadar: false,
+  showRadar: true,
   isGoalAnimation: false,
 
   setPhase: (phase) => set({ phase }),
@@ -75,14 +75,14 @@ export const useMatchStore = create<MatchStoreState>()((set) => ({
 
   resetMatch: () =>
     set({
-      phase: 'pre-kick-off',
+      phase: 'PRE_MATCH',
       score: [0, 0],
-      minute: 0,
+      minute: 1,
       half: 1,
       events: [],
       stats: DEFAULT_STATS,
       controlledPlayerId: null,
-      showRadar: false,
+      showRadar: true,
       isGoalAnimation: false,
     }),
 }))
