@@ -7,9 +7,11 @@ import { KitGenerator } from './KitGenerator'
 interface PlayerMeshProps {
   player: SimPlayer
   kit: Kit
+  isPassTarget?: boolean
+  onSelect?: (playerId: string) => void
 }
 
-export const PlayerMesh: React.FC<PlayerMeshProps> = ({ player, kit }) => {
+export const PlayerMesh: React.FC<PlayerMeshProps> = ({ player, kit, isPassTarget = false, onSelect }) => {
   const groupRef = useRef<THREE.Group>(null)
   const bodyRef = useRef<THREE.Group>(null)
   const leftLegRef = useRef<THREE.Group>(null)
@@ -131,7 +133,34 @@ export const PlayerMesh: React.FC<PlayerMeshProps> = ({ player, kit }) => {
   })
 
   return (
-    <group ref={groupRef}>
+    <group
+      ref={groupRef}
+      onClick={(e) => {
+        e.stopPropagation()
+        onSelect?.(player.id)
+      }}
+    >
+      {/* ─── Pass Target Indicator on Teammate ─── */}
+      {!isControlled && isPassTarget && (
+        <group position={[0, 0.025, 0]}>
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.65, 0.8, 32]} />
+            <meshBasicMaterial color="#fbbf24" side={THREE.DoubleSide} transparent opacity={0.85} />
+          </mesh>
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[0.65, 32]} />
+            <meshBasicMaterial color="#fbbf24" transparent opacity={0.15} />
+          </mesh>
+          {/* Small floating marker */}
+          <group position={[0, 2.2, 0]}>
+            <mesh rotation={[Math.PI, 0, 0]}>
+              <coneGeometry args={[0.12, 0.22, 4]} />
+              <meshBasicMaterial color="#fbbf24" />
+            </mesh>
+          </group>
+        </group>
+      )}
+
       {/* ─── Controlled Player Surrounding Circle Indicator on the Grass ─── */}
       {isControlled && (
         <group position={[0, 0.03, 0]}>

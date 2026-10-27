@@ -169,8 +169,23 @@ export interface Team {
 
 export type MatchPhase =
   | 'PRE_MATCH' | 'KICK_OFF' | 'PLAYING' | 'PAUSED'
-  | 'GOAL_CELEBRATION' | 'HALF_TIME' | 'EXTRA_TIME'
+  | 'GOAL_CELEBRATION' | 'SET_PIECE' | 'HALF_TIME' | 'EXTRA_TIME'
   | 'PENALTY_SHOOTOUT' | 'FULL_TIME'
+
+export interface MatchAnnouncement {
+  title: string
+  subtitle?: string
+  type: 'goal' | 'offside' | 'corner' | 'throw_in' | 'goal_kick' | 'foul' | 'penalty' | 'save' | 'info'
+  durationMs: number
+}
+
+export interface SetPieceState {
+  type: 'THROW_IN' | 'CORNER' | 'GOAL_KICK' | 'FREE_KICK' | 'PENALTY'
+  teamIndex: 0 | 1
+  position: Vec3
+  takerId: string
+  timer: number
+}
 
 export type SetPieceType =
   | 'NONE' | 'CORNER_LEFT' | 'CORNER_RIGHT'

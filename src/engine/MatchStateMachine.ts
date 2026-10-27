@@ -21,6 +21,7 @@ export class MatchStateMachine {
         this.phase === 'PRE_MATCH' ||
         this.phase === 'KICK_OFF' ||
         this.phase === 'PLAYING' ||
+        this.phase === 'SET_PIECE' ||
         this.phase === 'GOAL_CELEBRATION'
       )
     }
@@ -29,16 +30,23 @@ export class MatchStateMachine {
       case 'PRE_MATCH':
         return to === 'KICK_OFF' || to === 'PLAYING'
       case 'KICK_OFF':
-        return to === 'PLAYING'
+        return to === 'PLAYING' || to === 'SET_PIECE'
       case 'PLAYING':
         return (
           to === 'GOAL_CELEBRATION' ||
+          to === 'SET_PIECE' ||
           to === 'HALF_TIME' ||
           to === 'FULL_TIME' ||
           to === 'EXTRA_TIME'
         )
+      case 'SET_PIECE':
+        return (
+          to === 'PLAYING' ||
+          to === 'HALF_TIME' ||
+          to === 'FULL_TIME'
+        )
       case 'PAUSED':
-        return to === 'PLAYING' || to === 'KICK_OFF' || to === 'PRE_MATCH'
+        return to === 'PLAYING' || to === 'SET_PIECE' || to === 'KICK_OFF' || to === 'PRE_MATCH'
       case 'GOAL_CELEBRATION':
         return to === 'KICK_OFF' || to === 'PLAYING'
       case 'HALF_TIME':

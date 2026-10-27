@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { MatchPhase, MatchEvent, MatchStats } from '../data/types'
+import type { MatchPhase, MatchEvent, MatchStats, MatchAnnouncement } from '../data/types'
 
 const DEFAULT_STATS: MatchStats = {
   possession: [50, 50],
@@ -25,6 +25,8 @@ interface MatchStoreState {
   controlledPlayerId: string | null
   showRadar: boolean
   isGoalAnimation: boolean
+  announcement: MatchAnnouncement | null
+  shotPower: number
 
   setPhase: (phase: MatchPhase) => void
   addGoal: (teamIndex: 0 | 1) => void
@@ -35,6 +37,8 @@ interface MatchStoreState {
   setControlled: (id: string | null) => void
   toggleRadar: () => void
   setGoalAnimation: (v: boolean) => void
+  setAnnouncement: (a: MatchAnnouncement | null) => void
+  setShotPower: (p: number) => void
   resetMatch: () => void
 }
 
@@ -48,6 +52,8 @@ export const useMatchStore = create<MatchStoreState>()((set) => ({
   controlledPlayerId: null,
   showRadar: true,
   isGoalAnimation: false,
+  announcement: null,
+  shotPower: 0,
 
   setPhase: (phase) => set({ phase }),
 
@@ -73,6 +79,10 @@ export const useMatchStore = create<MatchStoreState>()((set) => ({
 
   setGoalAnimation: (isGoalAnimation) => set({ isGoalAnimation }),
 
+  setAnnouncement: (announcement) => set({ announcement }),
+
+  setShotPower: (shotPower) => set({ shotPower }),
+
   resetMatch: () =>
     set({
       phase: 'PRE_MATCH',
@@ -84,5 +94,7 @@ export const useMatchStore = create<MatchStoreState>()((set) => ({
       controlledPlayerId: null,
       showRadar: true,
       isGoalAnimation: false,
+      announcement: null,
+      shotPower: 0,
     }),
 }))
