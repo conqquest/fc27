@@ -572,11 +572,13 @@ export class SimulationLoop {
       controlled,
       oppGoalCenter,
       power,
-      controlled.playerData.attributes
+      controlled.playerData.attributes,
+      false,
+      aimAngle
     )
 
     // Dynamic loft according to power
-    const loft = power < 60 ? 0.08 : power > 85 ? 0.30 : 0.20
+    const loft = power < 52 ? 0.04 : power > 82 ? 0.28 : 0.18
     this.ballPhysics.kick(shot.velocity, shot.power, loft, shot.spin)
 
     this.stats.shots[0] += 1

@@ -158,7 +158,83 @@ describe('ShootingSystem', () => {
     expect(result.velocity.z).toBeGreaterThan(15)
     expect(result.power).toBe(85)
   })
+
+  it('adjusts shot height and trajectory based on power hold level', () => {
+    const shooter: SimPlayer = {
+      id: 'st',
+      teamIndex: 0,
+      playerData: {
+        id: 'st',
+        name: 'Striker',
+        shortName: 'Striker',
+        shirtNumber: 9,
+        position: 'ST',
+        secondaryPositions: [],
+        nationality: 'France',
+        age: 26,
+        height: 185,
+        weight: 80,
+        preferredFoot: 'Right',
+        overall: 90,
+        attributes: {
+          pace: 92,
+          acceleration: 92,
+          sprintSpeed: 93,
+          shooting: 92,
+          finishing: 94,
+          shotPower: 92,
+          longShots: 88,
+          passing: 80,
+          vision: 82,
+          crossing: 78,
+          shortPassing: 82,
+          longPassing: 75,
+          dribbling: 90,
+          ballControl: 91,
+          agility: 90,
+          balance: 86,
+          defending: 40,
+          interceptions: 40,
+          standingTackle: 40,
+          slidingTackle: 35,
+          strength: 84,
+          stamina: 88,
+          reactions: 92,
+          heading: 84,
+          gkDiving: 15,
+          gkHandling: 15,
+          gkKicking: 15,
+          gkPositioning: 15,
+          gkReflexes: 15,
+        },
+      },
+      position: { x: 0, y: 0, z: 35 },
+      velocity: { x: 0, y: 0, z: 0 },
+      rotation: 0,
+      stamina: 100,
+      hasBall: true,
+      isControlled: true,
+      targetPosition: { x: 0, y: 0, z: 35 },
+      role: 'attacker',
+      slotIndex: 9,
+      isOnPitch: true,
+      isSprinting: false,
+    }
+
+    const goalCenter = { x: 0, y: 1.2, z: 52.5 }
+    // Low tap -> low shot
+    const lowShot = shooting.computeShot(shooter, goalCenter, 35, shooter.playerData.attributes)
+    // High hold -> powerful rising shot
+    const highShot = shooting.computeShot(shooter, goalCenter, 90, shooter.playerData.attributes)
+
+    expect(highShot.velocity.y).toBeGreaterThan(lowShot.velocity.y)
+    expect(vec3Length(highShot.velocity)).toBeGreaterThan(vec3Length(lowShot.velocity))
+  })
 })
+
+function vec3Length(v: { x: number; y: number; z: number }): number {
+  return Math.hypot(v.x, v.y, v.z)
+}
 
 describe('KitGenerator', () => {
   it('detects color clashes when kits have similar primary color', () => {

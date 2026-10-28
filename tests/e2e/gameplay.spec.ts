@@ -51,4 +51,35 @@ test.describe('FC27 Football Simulator E2E Flow', () => {
     await expect(page.locator('text=Formation Pitch Map')).toBeVisible()
     await expect(page.getByText('Team Mentality', { exact: true })).toBeVisible()
   })
+
+  test('interacts with in-game HUD controls, virtual buttons and controls guide', async ({ page }) => {
+    await page.goto('/match')
+    await expect(page.locator('canvas').first()).toBeVisible()
+
+    // 1. Verify on-screen action buttons
+    await expect(page.locator('button:has-text("PASS")')).toBeVisible()
+    await expect(page.locator('button:has-text("SHOOT")')).toBeVisible()
+    await expect(page.locator('button:has-text("THROUGH")')).toBeVisible()
+    await expect(page.locator('button:has-text("CROSS")')).toBeVisible()
+    await expect(page.locator('button:has-text("SWITCH")')).toBeVisible()
+    await expect(page.locator('button:has-text("TACKLE")')).toBeVisible()
+    await expect(page.locator('button:has-text("SPRINT")')).toBeVisible()
+
+    // 2. Open and close Controls Guide
+    await page.click('button:has-text("GUIDE")')
+    await expect(page.locator('text=FC27 CONTROLS & RULES GUIDE')).toBeVisible()
+    await expect(page.locator('text=Offside Rule:')).toBeVisible()
+    await page.click('text=RESUME PLAY')
+    await expect(page.locator('text=FC27 CONTROLS & RULES GUIDE')).not.toBeVisible()
+
+    // 3. Test Sprint Toggle
+    await page.click('button:has-text("SPRINT")')
+    await expect(page.locator('text=SPRINT (SHIFT): ON')).toBeVisible()
+    await page.click('button:has-text("SPRINT")')
+    await expect(page.locator('text=SPRINT (SHIFT): OFF')).toBeVisible()
+
+    // 4. Test clicking action button does not throw or break canvas
+    await page.click('button:has-text("PASS")')
+    await expect(page.locator('canvas').first()).toBeVisible()
+  })
 })

@@ -14,7 +14,8 @@ export class ShootingSystem {
     targetGoalCenter: Vec3, // (0, 1.2, +/-52.5)
     powerInput: number, // 0-100
     attributes: PlayerAttributes,
-    isFirstTime: boolean = false
+    isFirstTime: boolean = false,
+    aimAngle?: number
   ): ShotResult {
     const toGoal = vec3.sub(targetGoalCenter, shooter.position)
     const distToGoal = vec3.length(toGoal)
@@ -22,25 +23,48 @@ export class ShootingSystem {
     // Base shot speed from power input and shotPower attribute
     const powerNorm = clamp(powerInput, 10, 100) / 100
     const powerAttrMod = (attributes.shotPower - 70) / 100
-    const shotSpeed = (20.0 + powerNorm * 16.0) * (1 + powerAttrMod * 0.2) // 20 - 38 m/s
+    const shotSpeed = (18.0 + powerNorm * 18.0) * (1 + powerAttrMod * 0.2) // 18 - 38 m/s
 
     // Calculate desired target point on the goal face
     // Finishing attribute affects error deviation
-    const finishingMod = (100 - attributes.finishing) / 100 // 0.1 for 90 finishing, 0.4 for 60 finishing
-    const distanceError = Math.max(0, (distToGoal - 18) * 0.05)
+    const finishingMod = (100 - attributes.finishing) / 100
+    const distanceError = Math.max(0, (distToGoal - 18) * 0.04)
     const firstTimeError = isFirstTime ? 0.2 : 0
 
-    const totalErrorScale = (finishingMod * 1.5 + distanceError + firstTimeError) * (0.8 + powerNorm * 0.4)
+    const totalErrorScale = (finishingMod * 1.3 + distanceError + firstTimeError) * (0.7 + powerNorm * 0.5)
 
-    // Add lateral and vertical variation
-    // Goal width is 7.32m (x: -3.66 to +3.66), height is 2.44m (y: 0 to 2.44)
-    // Aim towards side netting or corners
-    const aimSide = Math.random() > 0.5 ? 1 : -1
-    const targetX = aimSide * randomRange(1.0, 3.2) + (Math.random() - 0.5) * totalErrorScale * 2.5
-    const targetY = clamp(randomRange(0.4, 2.2) + (Math.random() - 0.5) * totalErrorScale * 1.5, 0.15, 4.0)
+    // Lateral aim: user aim angle steer if provided
+    let aimSide = Math.random() > 0.5 ? 1 : -1
+    let userAimX = 0
+    if (aimAngle !== undefined) {
+      // Camera view: X is lateral on pitch (-34 to +34)
+      const aimSin = Math.sin(aimAngle)
+      if (Math.abs(aimSin) > 0.15) {
+        aimSide = aimSin > 0 ? 1 : -1
+        userAimX = aimSide * clamp(Math.abs(aimSin) * 2.8, 1.2, 3.2)
+      }
+    }
+
+    const targetX = (userAimX !== 0 ? userAimX : aimSide * randomRange(1.2, 3.1)) +
+      (Math.random() - 0.5) * totalErrorScale * 1.8
+
+    // Height based on power: low driven (<55), placed (55-82), high rocket (>82)
+    let desiredHeight = 1.0
+    if (powerInput < 52) {
+      desiredHeight = randomRange(0.2, 0.6) // low driven shot
+    } else if (powerInput <= 82) {
+      desiredHeight = randomRange(0.8, 1.8) // mid-height placed shot
+    } else {
+      desiredHeight = randomRange(1.8, 2.3) // top corner rocket
+      if (powerInput > 94 && Math.random() < finishingMod * 0.6) {
+        desiredHeight += randomRange(0.3, 0.9) // over-hit over crossbar
+      }
+    }
+
+    const targetY = clamp(desiredHeight + (Math.random() - 0.5) * totalErrorScale * 0.8, 0.12, 3.8)
 
     const finalTargetPos: Vec3 = {
-      x: targetX,
+      x: clamp(targetX, -4.5, 4.5),
       y: targetY,
       z: targetGoalCenter.z,
     }
@@ -55,7 +79,7 @@ export class ShootingSystem {
     return {
       velocity: {
         x: shotDir.x * shotSpeed,
-        y: Math.max(1.5, shotDir.y * shotSpeed),
+        y: Math.max(0.5, shotDir.y * shotSpeed),
         z: shotDir.z * shotSpeed,
       },
       onTarget,

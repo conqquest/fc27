@@ -32,6 +32,7 @@ const MatchEngineBridge: React.FC<{
   const lastSwitchTime = useRef(0)
   const lastTackleTime = useRef(0)
   const wasShootPressed = useRef(false)
+  const lastMoveMethod = useRef<'arrows' | 'wasd'>('arrows')
 
   useFrame((_, delta) => {
     // 1. Process movement inputs
@@ -54,6 +55,12 @@ const MatchEngineBridge: React.FC<{
     const isD = isKeyHeld(inputState, keyBindings.moveRight) || isKeyHeld(inputState, 'd')
 
     if (isArrowMovement) {
+      lastMoveMethod.current = 'arrows'
+    } else if (isS || (isW && !isA && !isD)) {
+      lastMoveMethod.current = 'wasd'
+    }
+
+    if (lastMoveMethod.current === 'arrows' || isArrowMovement) {
       if (isArrowUp) moveVector.x -= 1
       if (isArrowDown) moveVector.x += 1
       if (isArrowLeft) moveVector.z -= 1
@@ -90,31 +97,35 @@ const MatchEngineBridge: React.FC<{
     const controlled = sim.simPlayers.find((p) => p.id === sim.controlledPlayerId)
     const hasPossession = controlled?.hasBall || false
 
-    // 2. Action: Pass (A key if using arrow keys, J key, or Left-Click on grass)
+    // 2. Action: Pass (A key, J key, Left-Click on grass / HUD)
     const isPassPressed =
       inputState.mouseButtons.has(0) ||
       isKeyHeld(inputState, 'j') ||
-      (isArrowMovement && isKeyHeld(inputState, 'a'))
+      (lastMoveMethod.current === 'arrows' && isKeyHeld(inputState, 'a')) ||
+      (isKeyHeld(inputState, 'a') && hasPossession && !isW && !isS && !isD)
 
     if (isPassPressed && now - lastPassTime.current > 280) {
       sim.performPass(false, false, aimAngle)
       lastPassTime.current = now
     }
 
-    // 3. Action: Through Ball (Q, or W when using arrow keys)
+    // 3. Action: Through Ball (W key when using arrow keys, Q key, or keyBindings)
     const isThroughPressed =
       isKeyHeld(inputState, keyBindings.throughBall) ||
-      (isArrowMovement && isKeyHeld(inputState, 'w'))
+      isKeyHeld(inputState, 'q') ||
+      (lastMoveMethod.current === 'arrows' && isKeyHeld(inputState, 'w'))
 
     if (isThroughPressed && now - lastPassTime.current > 300) {
       sim.performPass(true, false, aimAngle)
       lastPassTime.current = now
     }
 
-    // 4. Action: Cross / Lofted (F, or D when using arrow keys)
+    // 4. Action: Cross / Lofted Pass (D key, F key, or Right-Click when in possession)
     const isCrossPressed =
       isKeyHeld(inputState, keyBindings.crossOrLoft) ||
-      (isArrowMovement && isKeyHeld(inputState, 'd'))
+      isKeyHeld(inputState, 'f') ||
+      (lastMoveMethod.current === 'arrows' && isKeyHeld(inputState, 'd')) ||
+      (hasPossession && inputState.mouseButtons.has(2))
 
     if (isCrossPressed && now - lastPassTime.current > 300) {
       sim.performPass(false, true, aimAngle)
@@ -140,9 +151,9 @@ const MatchEngineBridge: React.FC<{
       }
     }
 
-    // 6. Action: Player Switch (Right Click, Tab, Q when defending, L)
+    // 6. Action: Player Switch (Q when defending, Tab, Right-Click when defending, L)
     const isSwitchPressed =
-      inputState.mouseButtons.has(2) ||
+      (!hasPossession && inputState.mouseButtons.has(2)) ||
       isKeyHeld(inputState, 'tab') ||
       isKeyHeld(inputState, 'l') ||
       (!hasPossession && isKeyHeld(inputState, 'q'))
@@ -152,10 +163,11 @@ const MatchEngineBridge: React.FC<{
       lastSwitchTime.current = now
     }
 
-    // 7. Action: Tackle (Space when defending, or E when defending)
+    // 7. Action: Tackle (E key when defending, Space when defending)
     const isTacklePressed =
       (!hasPossession && isKeyHeld(inputState, ' ')) ||
-      (!hasPossession && isKeyHeld(inputState, keyBindings.tackle))
+      (!hasPossession && isKeyHeld(inputState, keyBindings.tackle)) ||
+      (!hasPossession && isKeyHeld(inputState, 'e'))
 
     if (isTacklePressed && now - lastTackleTime.current > 350) {
       sim.performTackle()
