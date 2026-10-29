@@ -8,48 +8,71 @@ export const Stadium: React.FC = () => {
   const pitchWidth = 68
   const pitchLength = 105
 
-  // ─── 1. Procedural Minecraft-style Pixelated Checkered Grass Texture ───
-  const voxelGrassTexture = useMemo(() => {
+  // ─── 1. Clean, Simple Tournament Turf Grass Texture ───
+  const voxelPitchTexture = useMemo(() => {
     const canvas = document.createElement('canvas')
-    canvas.width = 512
-    canvas.height = 512
+    canvas.width = 1024
+    canvas.height = 2048
     const ctx = canvas.getContext('2d')
 
     if (ctx) {
-      ctx.imageSmoothingEnabled = false
+      // 16 tournament mowing stripes across the 105m pitch length (~6.56m per stripe)
+      const numStripes = 16
+      const stripeHeight = 2048 / numStripes
 
-      // Palette of vibrant Minecraft grass tones
-      const grassShades = ['#3b8526', '#43992b', '#347922', '#4ca831', '#378024']
+      // Lush, vibrant grass tones: Emerald & Tournament Green
+      const lightGreen = '#389b3f'
+      const darkGreen = '#2c8332'
 
-      // 16x16 pixel blocks
-      const blockSize = 32
-      for (let x = 0; x < 512; x += blockSize) {
-        for (let y = 0; y < 512; y += blockSize) {
-          const isStripeLight = Math.floor(y / 64) % 2 === 0
-          const baseColorIndex = isStripeLight ? 1 : 0
-          ctx.fillStyle = grassShades[baseColorIndex]
-          ctx.fillRect(x, y, blockSize, blockSize)
+      for (let s = 0; s < numStripes; s++) {
+        const isEven = s % 2 === 0
+        const baseColor = isEven ? lightGreen : darkGreen
+        const yStart = s * stripeHeight
 
-          // Pixel noise within each block
-          for (let px = 0; px < blockSize; px += 8) {
-            for (let py = 0; py < blockSize; py += 8) {
-              if ((px * 3 + py * 7) % 5 === 0) {
-                const shadeIdx = (baseColorIndex + ((px + py) % 3)) % grassShades.length
-                ctx.fillStyle = grassShades[shadeIdx]
-                ctx.fillRect(x + px, y + py, 8, 8)
-              }
-            }
-          }
-        }
+        ctx.fillStyle = baseColor
+        ctx.fillRect(0, yStart, 1024, stripeHeight)
+
+        // Subtle mower cut roller sheen (gradient across each stripe)
+        const grad = ctx.createLinearGradient(0, yStart, 0, yStart + stripeHeight)
+        grad.addColorStop(0, isEven ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)')
+        grad.addColorStop(0.5, 'rgba(0, 0, 0, 0)')
+        grad.addColorStop(1, isEven ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.05)')
+        ctx.fillStyle = grad
+        ctx.fillRect(0, yStart, 1024, stripeHeight)
+
+        // Clean, crisp mower seam line between stripes
+        ctx.fillStyle = 'rgba(20, 70, 25, 0.25)'
+        ctx.fillRect(0, yStart, 1024, 2)
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.12)'
+        ctx.fillRect(0, yStart + stripeHeight - 1, 1024, 1)
       }
+
+      // Natural, high-density grass blade dithering (fine grain, eliminates checkerboard)
+      const imgData = ctx.getImageData(0, 0, 1024, 2048)
+      const data = imgData.data
+
+      let seed = 4281
+      const pseudoRandom = () => {
+        seed = (seed * 16807) % 2147483647
+        return (seed - 1) / 2147483646
+      }
+
+      for (let i = 0; i < data.length; i += 4) {
+        const noise = (pseudoRandom() - 0.5) * 10
+        data[i] = Math.min(255, Math.max(0, data[i] + noise * 0.8))
+        data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + noise * 1.2))
+        data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + noise * 0.7))
+      }
+      ctx.putImageData(imgData, 0, 0)
     }
 
     const texture = new THREE.CanvasTexture(canvas)
-    texture.wrapS = THREE.RepeatWrapping
-    texture.wrapT = THREE.RepeatWrapping
-    texture.repeat.set(4, 6)
-    texture.magFilter = THREE.NearestFilter
-    texture.minFilter = THREE.NearestFilter
+    texture.wrapS = THREE.ClampToEdgeWrapping
+    texture.wrapT = THREE.ClampToEdgeWrapping
+    texture.magFilter = THREE.LinearFilter
+    texture.minFilter = THREE.LinearMipmapLinearFilter
+    texture.generateMipmaps = true
+    texture.anisotropy = 16
     return texture
   }, [])
 
@@ -82,7 +105,7 @@ export const Stadium: React.FC = () => {
       {/* ─── 1. Tiled Voxel Grass Pitch ─── */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
         <planeGeometry args={[pitchWidth + 8, pitchLength + 10]} />
-        <meshStandardMaterial map={voxelGrassTexture} roughness={0.85} />
+        <meshStandardMaterial map={voxelPitchTexture} roughness={0.75} />
       </mesh>
 
       {/* ─── 2. Surrounding Park Grass Plane ─── */}
