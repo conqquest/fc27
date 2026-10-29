@@ -61,6 +61,8 @@ export class SimulationLoop {
   private setPieceCooldown: number = 0
   private goalCelebrationTimer: number = 0
   private kickOffPending: boolean = true
+  public lastScoringTeam: 0 | 1 | null = null
+  private aiKickOffTimer: number = 1.5
 
   public score: [number, number] = [0, 0]
   public stats: MatchStats = {
@@ -469,6 +471,14 @@ export class SimulationLoop {
       this.callbacks.onPhaseChange?.('PLAYING')
     }
 
+    if (this.stateMachine.getPhase() === 'KICK_OFF' || this.kickOffPending) {
+      this.kickOffPending = false
+      if (this.stateMachine.canTransitionTo('PLAYING')) {
+        this.stateMachine.transition('PLAYING')
+        this.callbacks.onPhaseChange?.('PLAYING')
+      }
+    }
+
     if (target) {
       // Check offside position at moment of pass
       const isOffside = this.referee.checkOffside(controlled, target, opponents, 0)
@@ -567,6 +577,14 @@ export class SimulationLoop {
       this.callbacks.onPhaseChange?.('PLAYING')
     }
 
+    if (this.stateMachine.getPhase() === 'KICK_OFF' || this.kickOffPending) {
+      this.kickOffPending = false
+      if (this.stateMachine.canTransitionTo('PLAYING')) {
+        this.stateMachine.transition('PLAYING')
+        this.callbacks.onPhaseChange?.('PLAYING')
+      }
+    }
+
     const oppGoalCenter: Vec3 = { x: 0, y: 1.2, z: 52.5 }
     const shot = this.shootingSystem.computeShot(
       controlled,
@@ -662,15 +680,24 @@ export class SimulationLoop {
     if (currentPhase === 'GOAL_CELEBRATION') {
       this.goalCelebrationTimer -= clampedDt
       if (this.goalCelebrationTimer <= 0) {
-        this.setupKickOff(this.lastTouchedTeam === 0 ? 1 : 0)
-        this.stateMachine.transition('KICK_OFF')
-        this.callbacks.onPhaseChange?.('KICK_OFF')
+        this.resumeFromGoal()
       }
       return
     }
 
     if (currentPhase === 'PAUSED' || currentPhase === 'HALF_TIME' || currentPhase === 'FULL_TIME') {
       return
+    }
+
+    // Auto-progress kick-off for AI if player doesn't interact after 1.5 seconds
+    if (currentPhase === 'KICK_OFF') {
+      const kicker = this.simPlayers.find((p) => p.hasBall)
+      if (kicker && kicker.teamIndex === 1) {
+        this.aiKickOffTimer -= clampedDt
+        if (this.aiKickOffTimer <= 0) {
+          this.resumeFromGoal()
+        }
+      }
     }
 
     // Handle Set-Piece Phase
@@ -726,6 +753,7 @@ export class SimulationLoop {
     const scoringTeam = this.goalDetector.check(simBall, prevBallPos, Date.now())
     if (scoringTeam !== null) {
       this.score[scoringTeam] += 1
+      this.lastScoringTeam = scoringTeam
       const scorer = this.simPlayers.find((p) => p.id === this.lastTouchedPlayerId)
       const scoringTeamObj = scoringTeam === 0 ? this.homeTeam : this.awayTeam
 
@@ -981,6 +1009,44 @@ export class SimulationLoop {
       this.intendedPassTargetId = bestTarget ? bestTarget.id : null
     } else {
       this.intendedPassTargetId = null
+    }
+  }
+
+  /**
+   * Resumes gameplay after a goal celebration or kick-off upon user interaction or timer expiry.
+   */
+  public resumeFromGoal(): void {
+    const curPhase = this.stateMachine.getPhase()
+    if (curPhase === 'GOAL_CELEBRATION' || curPhase === 'KICK_OFF' || this.kickOffPending) {
+      this.goalCelebrationTimer = 0
+      this.currentAnnouncement = null
+      this.announcementTimer = 0
+      this.callbacks.onAnnouncement?.(null)
+
+      if (curPhase === 'GOAL_CELEBRATION') {
+        const kickingTeam: 0 | 1 = this.lastScoringTeam === 0 ? 1 : 0
+        this.setupKickOff(kickingTeam)
+      }
+
+      this.kickOffPending = false
+      if (this.stateMachine.canTransitionTo('PLAYING')) {
+        this.stateMachine.transition('PLAYING')
+        this.callbacks.onPhaseChange?.('PLAYING')
+      }
+
+      // If Bot (Away Team 1) has kickoff, execute pass backward to an AI teammate immediately
+      const kicker = this.simPlayers.find((p) => p.hasBall)
+      if (kicker && kicker.teamIndex === 1) {
+        kicker.hasBall = false
+        const teammates = this.simPlayers.filter((p) => p.teamIndex === 1 && p.id !== kicker.id && p.position.z > 5)
+        const target = teammates[0] || this.simPlayers[15]
+        const toTarget = vec3.sub(target.position, kicker.position)
+        const dir = vec3.normalize(toTarget)
+        this.ballPhysics.velocity = { x: dir.x * 11, y: 0.1, z: dir.z * 11 }
+        this.lastTouchedTeam = 1
+        this.lastTouchedPlayerId = kicker.id
+        this.possessionTracker.setPossession(1)
+      }
     }
   }
 

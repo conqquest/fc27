@@ -8,144 +8,48 @@ export const Stadium: React.FC = () => {
   const pitchWidth = 68
   const pitchLength = 105
 
-  // ─── 1. Procedural Voxel Premier League / Champions League Turf Texture ───
-  const voxelPitchTexture = useMemo(() => {
+  // ─── 1. Procedural Minecraft-style Pixelated Checkered Grass Texture ───
+  const voxelGrassTexture = useMemo(() => {
     const canvas = document.createElement('canvas')
-    canvas.width = 1024
-    canvas.height = 2048
-    const ctx = canvas.getContext('2d')
-
-    if (ctx) {
-      // 16 tournament mowing stripes across the 105m pitch length (~6.56m per stripe)
-      const numStripes = 16
-      const stripeHeight = 2048 / numStripes
-
-      // Lush, vibrant grass tones: Emerald & Tournament Green
-      const lightGreen = '#389b3f'
-      const darkGreen = '#2c8332'
-
-      for (let s = 0; s < numStripes; s++) {
-        const isEven = s % 2 === 0
-        const baseColor = isEven ? lightGreen : darkGreen
-        const yStart = s * stripeHeight
-
-        ctx.fillStyle = baseColor
-        ctx.fillRect(0, yStart, 1024, stripeHeight)
-
-        // Subtle mower cut roller sheen (gradient across each stripe)
-        const grad = ctx.createLinearGradient(0, yStart, 0, yStart + stripeHeight)
-        grad.addColorStop(0, isEven ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)')
-        grad.addColorStop(0.5, 'rgba(0, 0, 0, 0)')
-        grad.addColorStop(1, isEven ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.05)')
-        ctx.fillStyle = grad
-        ctx.fillRect(0, yStart, 1024, stripeHeight)
-
-        // Clean, crisp mower seam line between stripes
-        ctx.fillStyle = 'rgba(20, 70, 25, 0.25)'
-        ctx.fillRect(0, yStart, 1024, 2)
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.12)'
-        ctx.fillRect(0, yStart + stripeHeight - 1, 1024, 1)
-      }
-
-      // Natural, high-density grass blade dithering (fine grain, eliminates checkerboard)
-      const imgData = ctx.getImageData(0, 0, 1024, 2048)
-      const data = imgData.data
-
-      let seed = 4281
-      const pseudoRandom = () => {
-        seed = (seed * 16807) % 2147483647
-        return (seed - 1) / 2147483646
-      }
-
-      for (let i = 0; i < data.length; i += 4) {
-        const noise = (pseudoRandom() - 0.5) * 10
-        data[i] = Math.min(255, Math.max(0, data[i] + noise * 0.8))
-        data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + noise * 1.2))
-        data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + noise * 0.7))
-      }
-      ctx.putImageData(imgData, 0, 0)
-    }
-
-    const texture = new THREE.CanvasTexture(canvas)
-    texture.wrapS = THREE.ClampToEdgeWrapping
-    texture.wrapT = THREE.ClampToEdgeWrapping
-    texture.magFilter = THREE.LinearFilter
-    texture.minFilter = THREE.LinearMipmapLinearFilter
-    texture.generateMipmaps = true
-    texture.anisotropy = 16
-    return texture
-  }, [])
-
-  // ─── 2. Procedural Minecraft Dirt Side Texture for Raised Pitch Bed ───
-  const voxelDirtTexture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 64
-    canvas.height = 64
+    canvas.width = 512
+    canvas.height = 512
     const ctx = canvas.getContext('2d')
 
     if (ctx) {
       ctx.imageSmoothingEnabled = false
-      // Rich brown soil base
-      ctx.fillStyle = '#6d4c41'
-      ctx.fillRect(0, 0, 64, 64)
 
-      // Soil pixel noise
-      ctx.fillStyle = '#5d4037'
-      for (let x = 0; x < 64; x += 8) {
-        for (let y = 0; y < 64; y += 8) {
-          if ((x * 3 + y * 7) % 4 === 0) {
-            ctx.fillRect(x, y, 8, 8)
+      // Palette of vibrant Minecraft grass tones
+      const grassShades = ['#3b8526', '#43992b', '#347922', '#4ca831', '#378024']
+
+      // 16x16 pixel blocks
+      const blockSize = 32
+      for (let x = 0; x < 512; x += blockSize) {
+        for (let y = 0; y < 512; y += blockSize) {
+          const isStripeLight = Math.floor(y / 64) % 2 === 0
+          const baseColorIndex = isStripeLight ? 1 : 0
+          ctx.fillStyle = grassShades[baseColorIndex]
+          ctx.fillRect(x, y, blockSize, blockSize)
+
+          // Pixel noise within each block
+          for (let px = 0; px < blockSize; px += 8) {
+            for (let py = 0; py < blockSize; py += 8) {
+              if ((px * 3 + py * 7) % 5 === 0) {
+                const shadeIdx = (baseColorIndex + ((px + py) % 3)) % grassShades.length
+                ctx.fillStyle = grassShades[shadeIdx]
+                ctx.fillRect(x + px, y + py, 8, 8)
+              }
+            }
           }
         }
       }
-
-      // Overhanging green grass blocks on top rim
-      ctx.fillStyle = '#389b3f'
-      ctx.fillRect(0, 0, 64, 16)
-      ctx.fillRect(8, 16, 16, 8)
-      ctx.fillRect(36, 16, 16, 10)
     }
 
     const texture = new THREE.CanvasTexture(canvas)
     texture.wrapS = THREE.RepeatWrapping
     texture.wrapT = THREE.RepeatWrapping
-    texture.repeat.set(16, 1)
+    texture.repeat.set(4, 6)
     texture.magFilter = THREE.NearestFilter
     texture.minFilter = THREE.NearestFilter
-    return texture
-  }, [])
-
-  // ─── 3. Procedural Terracotta Athletics Track Texture ───
-  const trackTexture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 256
-    canvas.height = 256
-    const ctx = canvas.getContext('2d')
-
-    if (ctx) {
-      ctx.imageSmoothingEnabled = false
-      ctx.fillStyle = '#991b1b' // rich terracotta track
-      ctx.fillRect(0, 0, 256, 256)
-
-      // Brick paver pattern
-      ctx.fillStyle = '#7f1d1d'
-      for (let y = 0; y < 256; y += 32) {
-        ctx.fillRect(0, y, 256, 2)
-        const offset = (y / 32) % 2 === 0 ? 0 : 32
-        for (let x = offset; x < 256; x += 64) {
-          ctx.fillRect(x, y, 2, 32)
-        }
-      }
-    }
-
-    const texture = new THREE.CanvasTexture(canvas)
-    texture.wrapS = THREE.RepeatWrapping
-    texture.wrapT = THREE.RepeatWrapping
-    texture.repeat.set(6, 8)
-    texture.magFilter = THREE.LinearFilter
-    texture.minFilter = THREE.LinearMipmapLinearFilter
-    texture.generateMipmaps = true
-    texture.anisotropy = 8
     return texture
   }, [])
 
@@ -175,83 +79,20 @@ export const Stadium: React.FC = () => {
 
   return (
     <group name="voxel-stadium-and-world">
-      {/* ─── 1. Main Raised Voxel Turf Bed (Top: Striped Pitch, Sides: Dirt) ─── */}
-      <group position={[0, -0.05, 0]}>
-        {/* Top Pitch Turf Surface */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]} receiveShadow>
-          <planeGeometry args={[pitchWidth, pitchLength]} />
-          <meshStandardMaterial map={voxelPitchTexture} roughness={0.65} metalness={0.0} />
-        </mesh>
-        {/* Run-off Green Grass Border */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.048, 0]} receiveShadow>
-          <planeGeometry args={[pitchWidth + 6, pitchLength + 6]} />
-          <meshStandardMaterial color="#277821" roughness={0.7} />
-        </mesh>
-        {/* Raised 3D Dirt Edge Rim (West, East, North, South) */}
-        <mesh position={[-pitchWidth / 2 - 3, -0.05, 0]} receiveShadow>
-          <boxGeometry args={[0.2, 0.2, pitchLength + 6.2]} />
-          <meshStandardMaterial map={voxelDirtTexture} roughness={0.9} />
-        </mesh>
-        <mesh position={[pitchWidth / 2 + 3, -0.05, 0]} receiveShadow>
-          <boxGeometry args={[0.2, 0.2, pitchLength + 6.2]} />
-          <meshStandardMaterial map={voxelDirtTexture} roughness={0.9} />
-        </mesh>
-        <mesh position={[0, -0.05, -pitchLength / 2 - 3]} receiveShadow>
-          <boxGeometry args={[pitchWidth + 6.2, 0.2, 0.2]} />
-          <meshStandardMaterial map={voxelDirtTexture} roughness={0.9} />
-        </mesh>
-        <mesh position={[0, -0.05, pitchLength / 2 + 3]} receiveShadow>
-          <boxGeometry args={[pitchWidth + 6.2, 0.2, 0.2]} />
-          <meshStandardMaterial map={voxelDirtTexture} roughness={0.9} />
-        </mesh>
-      </group>
-
-      {/* ─── 2. Surrounding Terracotta Running Track & Technical Pavement ─── */}
-      <group position={[0, -0.08, 0]}>
-        {/* Outer Athletic Track Ring */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-          <planeGeometry args={[pitchWidth + 18, pitchLength + 20]} />
-          <meshStandardMaterial map={trackTexture} roughness={0.8} />
-        </mesh>
-        {/* White Track Inner Lane Stripe */}
-        <mesh position={[0, 0.005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[(pitchWidth + 6.6) / 2, (pitchWidth + 6.9) / 2, 4]} />
-          <meshBasicMaterial color="#ffffff" />
-        </mesh>
-      </group>
-
-      {/* ─── 3. Raised Concrete Curbstones Framing the Ground ─── */}
-      <group position={[0, 0.05, 0]}>
-        {/* West Curb */}
-        <mesh position={[-pitchWidth / 2 - 9.1, 0, 0]} receiveShadow>
-          <boxGeometry args={[0.3, 0.2, pitchLength + 20.4]} />
-          <meshStandardMaterial color="#cbd5e1" roughness={0.7} />
-        </mesh>
-        {/* East Curb */}
-        <mesh position={[pitchWidth / 2 + 9.1, 0, 0]} receiveShadow>
-          <boxGeometry args={[0.3, 0.2, pitchLength + 20.4]} />
-          <meshStandardMaterial color="#cbd5e1" roughness={0.7} />
-        </mesh>
-        {/* North Curb */}
-        <mesh position={[0, 0, -pitchLength / 2 - 10.1]} receiveShadow>
-          <boxGeometry args={[pitchWidth + 18.4, 0.2, 0.3]} />
-          <meshStandardMaterial color="#cbd5e1" roughness={0.7} />
-        </mesh>
-        {/* South Curb */}
-        <mesh position={[0, 0, pitchLength / 2 + 10.1]} receiveShadow>
-          <boxGeometry args={[pitchWidth + 18.4, 0.2, 0.3]} />
-          <meshStandardMaterial color="#cbd5e1" roughness={0.7} />
-        </mesh>
-      </group>
-
-      {/* ─── 4. Surrounding Park Lawn Beyond Track ─── */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]} receiveShadow>
-        <planeGeometry args={[140, 180]} />
-        <meshStandardMaterial color="#2c7521" roughness={0.85} />
+      {/* ─── 1. Tiled Voxel Grass Pitch ─── */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
+        <planeGeometry args={[pitchWidth + 8, pitchLength + 10]} />
+        <meshStandardMaterial map={voxelGrassTexture} roughness={0.85} />
       </mesh>
 
-      {/* ─── 5. Crisp White Pitch Markings (Elevated Y = 0.02 to eliminate z-fighting) ─── */}
-      <group position={[0, 0.02, 0]}>
+      {/* ─── 2. Surrounding Park Grass Plane ─── */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
+        <planeGeometry args={[140, 180]} />
+        <meshStandardMaterial color="#2d6a1e" roughness={0.9} />
+      </mesh>
+
+      {/* ─── 3. Crisp White Pitch Markings ─── */}
+      <group position={[0, 0.015, 0]}>
         {/* Touchlines (Left & Right) */}
         <mesh position={[-pitchWidth / 2, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[0.16, pitchLength]} />
@@ -391,7 +232,7 @@ export const Stadium: React.FC = () => {
         </mesh>
       </group>
 
-      {/* ─── 6. Block-Built Voxel Goals ─── */}
+      {/* ─── 4. Block-Built Voxel Goals ─── */}
       {/* Home Goal (Z = -52.5) */}
       <group position={[0, 0, -pitchLength / 2]}>
         {/* Left post (square block) */}
@@ -460,7 +301,7 @@ export const Stadium: React.FC = () => {
         </mesh>
       </group>
 
-      {/* ─── 7. Voxel Corner Flags ─── */}
+      {/* ─── 5. Voxel Corner Flags ─── */}
       {[
         [-pitchWidth / 2, -pitchLength / 2],
         [pitchWidth / 2, -pitchLength / 2],
@@ -481,7 +322,7 @@ export const Stadium: React.FC = () => {
         </group>
       ))}
 
-      {/* ─── 8. Voxel Sideline Dugouts & Team Benches ─── */}
+      {/* ─── 6. Voxel Sideline Dugouts & Team Benches ─── */}
       {/* Home Dugout */}
       <group position={[-pitchWidth / 2 - 5.5, 0, -8]}>
         <mesh position={[0, 1.3, 0]}>
@@ -508,7 +349,7 @@ export const Stadium: React.FC = () => {
         </mesh>
       </group>
 
-      {/* ─── 9. Voxel Sideline Bleachers & Spectators ─── */}
+      {/* ─── 7. Voxel Sideline Bleachers & Spectators ─── */}
       {/* West Bleachers Base */}
       <mesh position={[-pitchWidth / 2 - 6, 0.4, 0]} receiveShadow>
         <boxGeometry args={[3.2, 0.8, 76]} />
@@ -545,7 +386,7 @@ export const Stadium: React.FC = () => {
         </group>
       ))}
 
-      {/* ─── 10. Voxel Perimeter Advertising Boards ─── */}
+      {/* ─── 8. Voxel Perimeter Advertising Boards ─── */}
       <group position={[0, 0.4, 0]}>
         {/* West board */}
         <mesh position={[-pitchWidth / 2 - 2.4, 0, 0]}>
@@ -569,10 +410,10 @@ export const Stadium: React.FC = () => {
         </mesh>
       </group>
 
-      {/* ─── 11. Procedural Voxel Forest Surrounding Pitch ─── */}
+      {/* ─── 9. Procedural Voxel Forest Surrounding Pitch ─── */}
       <VoxelForest pitchWidth={pitchWidth} pitchLength={pitchLength} />
 
-      {/* ─── 12. Living Voxel City & Skyline Beyond ─── */}
+      {/* ─── 10. Living Voxel City & Skyline Beyond ─── */}
       <VoxelCity pitchWidth={pitchWidth} pitchLength={pitchLength} />
     </group>
   )

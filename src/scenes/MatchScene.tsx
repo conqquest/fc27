@@ -236,12 +236,31 @@ export default function MatchScene() {
   const lastEscPress = useRef(0)
   const lastTabPress = useRef(0)
 
+  // Resume immediately on user interaction
+  const handleResumeFromGoal = () => {
+    const curPhase = sim.stateMachine.getPhase()
+    if (curPhase === 'GOAL_CELEBRATION' || curPhase === 'KICK_OFF') {
+      sim.resumeFromGoal()
+      setPhase('PLAYING')
+    }
+  }
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const now = Date.now()
+      const curPhase = sim.stateMachine.getPhase()
+
+      // Any key press resumes from goal celebration or kick-off immediately
+      if (curPhase === 'GOAL_CELEBRATION' || curPhase === 'KICK_OFF') {
+        if (e.key !== 'Escape') {
+          sim.resumeFromGoal()
+          setPhase('PLAYING')
+          return
+        }
+      }
+
       if (e.key === 'Escape' && now - lastEscPress.current > 300) {
         lastEscPress.current = now
-        const curPhase = sim.stateMachine.getPhase()
         if (curPhase !== 'PAUSED') {
           sim.stateMachine.transition('PAUSED')
           setPhase('PAUSED')
@@ -258,8 +277,20 @@ export default function MatchScene() {
       }
     }
 
+    const onPointerDown = () => {
+      const curPhase = sim.stateMachine.getPhase()
+      if (curPhase === 'GOAL_CELEBRATION' || curPhase === 'KICK_OFF') {
+        sim.resumeFromGoal()
+        setPhase('PLAYING')
+      }
+    }
+
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('pointerdown', onPointerDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('pointerdown', onPointerDown)
+    }
   }, [phase, sim, setPhase, toggleRadar])
 
   const controlledPlayer = sim.simPlayers.find((p) => p.id === sim.controlledPlayerId) || null
@@ -364,15 +395,37 @@ export default function MatchScene() {
             setPhase(prev || 'PLAYING')
           }
         }}
-        onPass={() => sim.performPass(false, false)}
-        onShootStart={() => sim.startChargingShot()}
+        onResumeFromGoal={handleResumeFromGoal}
+        onPass={() => {
+          handleResumeFromGoal()
+          sim.performPass(false, false)
+        }}
+        onShootStart={() => {
+          handleResumeFromGoal()
+          sim.startChargingShot()
+        }}
         onShootEnd={() => sim.releaseShot()}
-        onThroughBall={() => sim.performPass(true, false)}
-        onCross={() => sim.performPass(false, true)}
-        onSwitchPlayer={() => sim.switchControlledPlayer()}
-        onTackle={() => sim.performTackle()}
+        onThroughBall={() => {
+          handleResumeFromGoal()
+          sim.performPass(true, false)
+        }}
+        onCross={() => {
+          handleResumeFromGoal()
+          sim.performPass(false, true)
+        }}
+        onSwitchPlayer={() => {
+          handleResumeFromGoal()
+          sim.switchControlledPlayer()
+        }}
+        onTackle={() => {
+          handleResumeFromGoal()
+          sim.performTackle()
+        }}
         onSprintToggle={() => setVirtualSprint((prev) => !prev)}
         onVirtualMove={(move) => {
+          if (phase === 'GOAL_CELEBRATION' || phase === 'KICK_OFF') {
+            handleResumeFromGoal()
+          }
           virtualMoveRef.current = move
         }}
       />

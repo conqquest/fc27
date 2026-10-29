@@ -28,6 +28,7 @@ interface MatchHUDProps {
   onTackle?: () => void
   onSprintToggle?: () => void
   onVirtualMove?: (moveVector: Vec3) => void
+  onResumeFromGoal?: () => void
 }
 
 export const MatchHUD: React.FC<MatchHUDProps> = ({
@@ -55,6 +56,7 @@ export const MatchHUD: React.FC<MatchHUDProps> = ({
   onTackle,
   onSprintToggle,
   onVirtualMove,
+  onResumeFromGoal,
 }) => {
   const [showControlsGuide, setShowControlsGuide] = useState(false)
   const hasPossession = controlledPlayer?.hasBall ?? false
@@ -248,14 +250,20 @@ export const MatchHUD: React.FC<MatchHUDProps> = ({
 
       {/* ─── Goal Celebration Full Banner ─── */}
       {phase === 'GOAL_CELEBRATION' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in pointer-events-none z-50">
-          <div className="bg-gradient-to-r from-ui-dark via-ui-accent/20 to-ui-dark border-y-2 border-ui-accent py-8 px-24 text-center transform scale-110 shadow-2xl">
+        <div
+          onClick={onResumeFromGoal}
+          className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in cursor-pointer z-50 select-none"
+        >
+          <div className="bg-gradient-to-r from-ui-dark via-ui-accent/20 to-ui-dark border-y-2 border-ui-accent py-8 px-24 text-center transform scale-110 shadow-2xl mb-6">
             <h1 className="text-6xl font-black italic tracking-widest text-white drop-shadow-[0_4px_16px_rgba(0,212,255,0.8)] animate-pulse">
               GOAL!
             </h1>
             <p className="text-lg text-ui-accent font-bold mt-2 tracking-widest uppercase">
-              What a strike!
+              {announcement?.subtitle || 'What a strike!'}
             </p>
+          </div>
+          <div className="flex items-center space-x-2 px-6 py-2.5 bg-white/10 hover:bg-white/20 border border-white/30 rounded-full backdrop-blur-md text-white font-bold tracking-widest text-xs uppercase transition-all shadow-lg animate-bounce">
+            <span>Click or press any button to resume</span>
           </div>
         </div>
       )}
