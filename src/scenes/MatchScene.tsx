@@ -279,17 +279,19 @@ export default function MatchScene() {
         <fog attach="fog" args={['#87ceeb', 110, 320]} />
 
         {/* Ambient & Daylight Sunlight for Voxel Colors */}
-        <ambientLight intensity={0.85} color="#f8fafc" />
+        <ambientLight intensity={0.92} color="#f8fafc" />
         <directionalLight
-          position={[45, 65, 35]}
-          intensity={1.6}
+          position={[15, 85, 20]}
+          intensity={1.4}
           castShadow={settings.graphics.shadows}
           shadow-mapSize={[2048, 2048]}
-          shadow-camera-left={-65}
-          shadow-camera-right={65}
-          shadow-camera-top={65}
-          shadow-camera-bottom={65}
-          shadow-bias={-0.0005}
+          shadow-camera-left={-70}
+          shadow-camera-right={70}
+          shadow-camera-top={70}
+          shadow-camera-bottom={-70}
+          shadow-camera-near={10}
+          shadow-camera-far={200}
+          shadow-bias={-0.0003}
         />
 
         {/* 3D Voxel Pitch, Dugouts, Trees, and Surrounding City */}

@@ -247,7 +247,6 @@ export const VoxelCity: React.FC<VoxelCityProps> = () => {
         <mesh
           key={i}
           position={[b.x, b.h / 2, b.z]}
-          castShadow
           receiveShadow
         >
           <boxGeometry args={[b.w, b.h, b.d]} />
@@ -270,7 +269,7 @@ export const VoxelCity: React.FC<VoxelCityProps> = () => {
 
       {/* ─── Rooftops, Antennas & Water Towers ─── */}
       {roofInstances.map((r, i) => (
-        <mesh key={i} position={[r.x, r.y, r.z]} castShadow>
+        <mesh key={i} position={[r.x, r.y, r.z]}>
           <boxGeometry args={[r.w, 4, r.d]} />
           <meshStandardMaterial color={r.color} roughness={0.8} />
         </mesh>
