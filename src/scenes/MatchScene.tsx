@@ -267,29 +267,35 @@ export default function MatchScene() {
   const ballVel = sim.ballPhysics.getVelocity()
 
   return (
-    <div className="relative w-screen h-screen bg-[#0a0a0f] overflow-hidden select-none">
+    <div className="relative w-screen h-screen bg-[#87ceeb] overflow-hidden select-none">
       {/* ─── 3D WebGL Canvas ─── */}
       <Canvas
         shadows={settings.graphics.shadows}
-        camera={{ position: [28, 15, 0], fov: 38 }}
+        camera={{ position: [28, 16, 0], fov: 40 }}
         className="w-full h-full"
       >
-        <ambientLight intensity={0.75} />
+        {/* Voxel Sky and Soft Horizon Distance Fog */}
+        <color attach="background" args={['#87ceeb']} />
+        <fog attach="fog" args={['#87ceeb', 110, 320]} />
+
+        {/* Ambient & Daylight Sunlight for Voxel Colors */}
+        <ambientLight intensity={0.85} color="#f8fafc" />
         <directionalLight
-          position={[20, 35, 20]}
-          intensity={1.5}
+          position={[45, 65, 35]}
+          intensity={1.6}
           castShadow={settings.graphics.shadows}
           shadow-mapSize={[2048, 2048]}
-          shadow-camera-left={-55}
-          shadow-camera-right={55}
-          shadow-camera-top={55}
-          shadow-camera-bottom={55}
+          shadow-camera-left={-65}
+          shadow-camera-right={65}
+          shadow-camera-top={65}
+          shadow-camera-bottom={65}
+          shadow-bias={-0.0005}
         />
 
-        {/* 3D Pitch and Stadium architecture */}
+        {/* 3D Voxel Pitch, Dugouts, Trees, and Surrounding City */}
         <Stadium />
 
-        {/* 22 3D Animated Players with dynamic kits & pass target highlights */}
+        {/* 22 3D Animated Voxel Players with dynamic kits & pass target highlights */}
         {sim.simPlayers.map((player) => (
           <PlayerMesh
             key={player.id}
@@ -316,7 +322,7 @@ export default function MatchScene() {
         <BallMesh position={ballPos} velocity={ballVel} />
 
         {/* Smooth Broadcast Camera */}
-        <Camera ballPosition={ballPos} config={cameraConfig} />
+        <Camera ballPosition={ballPos} player={controlledPlayer} config={cameraConfig} />
 
         {/* Drive Simulation Loop on each frame */}
         <MatchEngineBridge

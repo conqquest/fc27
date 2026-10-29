@@ -11,36 +11,43 @@ interface BallMeshProps {
 export const BallMesh: React.FC<BallMeshProps> = ({ position, velocity }) => {
   const meshRef = useRef<THREE.Mesh>(null)
 
-  // Procedural classic soccer ball texture
+  // Voxel / Pixelated classic black-and-white soccer ball texture
   const ballTexture = useMemo(() => {
     const canvas = document.createElement('canvas')
-    canvas.width = 512
-    canvas.height = 256
+    canvas.width = 128
+    canvas.height = 64
     const ctx = canvas.getContext('2d')
     if (ctx) {
+      ctx.imageSmoothingEnabled = false
+      // Pure white leather base
       ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, 512, 256)
+      ctx.fillRect(0, 0, 128, 64)
 
+      // Black voxel pentagons
       ctx.fillStyle = '#111827'
-      // Draw pentagon patterns across the surface
       const spots = [
-        [64, 64], [192, 64], [320, 64], [448, 64],
-        [128, 192], [256, 192], [384, 192],
+        [16, 16], [48, 16], [80, 16], [112, 16],
+        [32, 48], [64, 48], [96, 48],
       ]
       for (const [x, y] of spots) {
-        ctx.beginPath()
-        for (let i = 0; i < 5; i++) {
-          const angle = (i * 2 * Math.PI) / 5 - Math.PI / 2
-          const px = x + Math.cos(angle) * 26
-          const py = y + Math.sin(angle) * 26
-          if (i === 0) ctx.moveTo(px, py)
-          else ctx.lineTo(px, py)
-        }
-        ctx.closePath()
-        ctx.fill()
+        ctx.fillRect(x - 6, y - 6, 12, 12)
+        // Stepped pixel corners to resemble pentagons
+        ctx.fillRect(x - 4, y - 8, 8, 2)
+        ctx.fillRect(x - 4, y + 6, 8, 2)
+        ctx.fillRect(x - 8, y - 4, 2, 8)
+        ctx.fillRect(x + 6, y - 4, 2, 8)
+      }
+
+      // Seam stitch lines
+      ctx.fillStyle = 'rgba(0,0,0,0.15)'
+      for (let i = 0; i < 128; i += 16) {
+        ctx.fillRect(i, 0, 1, 64)
       }
     }
     const texture = new THREE.CanvasTexture(canvas)
+    texture.magFilter = THREE.NearestFilter
+    texture.minFilter = THREE.NearestFilter
+    texture.generateMipmaps = false
     return texture
   }, [])
 
@@ -48,7 +55,7 @@ export const BallMesh: React.FC<BallMeshProps> = ({ position, velocity }) => {
     if (meshRef.current) {
       // Rotate ball along movement direction
       const speed = Math.hypot(velocity.x, velocity.z)
-      if (speed > 0.1) {
+      if (speed > 0.08) {
         const rotAxis = new THREE.Vector3(velocity.z, 0, -velocity.x).normalize()
         const rotAngle = (speed / 0.11) * delta
         meshRef.current.rotateOnAxis(rotAxis, rotAngle)
@@ -56,22 +63,26 @@ export const BallMesh: React.FC<BallMeshProps> = ({ position, velocity }) => {
     }
   })
 
+  const heightAboveGrass = Math.max(0, position.y - 0.11)
+  const shadowScale = Math.max(0.04, 0.13 * (1 - heightAboveGrass * 0.25))
+  const shadowOpacity = Math.max(0.08, 0.5 - heightAboveGrass * 0.18)
+
   return (
     <group position={[position.x, position.y, position.z]}>
-      {/* 3D Ball Sphere */}
+      {/* 3D Ball Sphere with Voxel Texture */}
       <mesh ref={meshRef} castShadow>
-        <sphereGeometry args={[0.11, 32, 32]} />
+        <sphereGeometry args={[0.11, 24, 24]} />
         <meshStandardMaterial
           map={ballTexture}
-          roughness={0.25}
-          metalness={0.1}
+          roughness={0.4}
+          metalness={0.05}
         />
       </mesh>
 
-      {/* Dynamic Ground Shadow */}
+      {/* Dynamic Voxel Octagonal Ground Shadow */}
       <mesh position={[0, -position.y + 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[Math.max(0.04, 0.13 * (1 - position.y * 0.15)), 16]} />
-        <meshBasicMaterial color="#000000" transparent opacity={Math.max(0.1, 0.45 - position.y * 0.1)} />
+        <circleGeometry args={[shadowScale, 8]} />
+        <meshBasicMaterial color="#000000" transparent opacity={shadowOpacity} />
       </mesh>
     </group>
   )
