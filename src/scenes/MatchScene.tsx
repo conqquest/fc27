@@ -216,6 +216,7 @@ export default function MatchScene() {
   const { config: cameraConfig } = useCamera()
   const [renderTrigger, setRenderTrigger] = useState(0)
   const [virtualSprint, setVirtualSprint] = useState(false)
+  const [showOffsideLine, setShowOffsideLine] = useState(false)
   const virtualMoveRef = useRef<Vec3>({ x: 0, y: 0, z: 0 })
 
   // Instantiate the SimulationLoop
@@ -335,6 +336,17 @@ export default function MatchScene() {
 
         {/* 3D Voxel Pitch and Selected Stadium Environment */}
         <Stadium stadiumId={selectedStadiumId} />
+
+        {/* 3D IFAB Offside Debug Line */}
+        {showOffsideLine && sim.getOffsideLineZ() !== null && (
+          <mesh
+            position={[0, 0.05, sim.getOffsideLineZ()!]}
+            rotation={[-Math.PI / 2, 0, 0]}
+          >
+            <planeGeometry args={[68, 0.3]} />
+            <meshBasicMaterial color="#fbbf24" transparent opacity={0.7} side={2} />
+          </mesh>
+        )}
 
         {/* 22 3D Animated Voxel Players with dynamic kits & pass target highlights */}
         {sim.simPlayers.map((player) => (
