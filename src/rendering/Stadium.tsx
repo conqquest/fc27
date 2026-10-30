@@ -1,9 +1,17 @@
 import React, { useMemo } from 'react'
 import * as THREE from 'three'
-import { VoxelForest } from './VoxelForest'
-import { VoxelCity } from './VoxelCity'
+import type { StadiumId } from '../data/stadiums'
+import { useStadiumStore } from '../store/stadiumStore'
+import { StadiumEnvironment } from './environments/StadiumEnvironment'
 
-export const Stadium: React.FC = () => {
+interface StadiumProps {
+  stadiumId?: StadiumId
+}
+
+export const Stadium: React.FC<StadiumProps> = ({ stadiumId }) => {
+  const { selectedStadiumId } = useStadiumStore()
+  const activeStadiumId = stadiumId || selectedStadiumId
+
   // FIFA regulation pitch dimensions: 105m long (-52.5 to +52.5 in Z), 68m wide (-34 to +34 in X)
   const pitchWidth = 68
   const pitchLength = 105
@@ -433,11 +441,12 @@ export const Stadium: React.FC = () => {
         </mesh>
       </group>
 
-      {/* ─── 9. Procedural Voxel Forest Surrounding Pitch ─── */}
-      <VoxelForest pitchWidth={pitchWidth} pitchLength={pitchLength} />
-
-      {/* ─── 10. Living Voxel City & Skyline Beyond ─── */}
-      <VoxelCity pitchWidth={pitchWidth} pitchLength={pitchLength} />
+      {/* ─── 9. Dynamic Stadium Background Environment (Selected Venue) ─── */}
+      <StadiumEnvironment
+        stadiumId={activeStadiumId}
+        pitchWidth={pitchWidth}
+        pitchLength={pitchLength}
+      />
     </group>
   )
 }

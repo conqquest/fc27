@@ -53,13 +53,13 @@ export default function TeamSelection() {
           </div>
         </div>
 
-        {/* Start Match CTA */}
+        {/* Next: Stadium Selection CTA */}
         <button
-          onClick={() => navigate('/match')}
+          onClick={() => navigate('/stadium-selection')}
           className="flex items-center gap-2 bg-ui-accent hover:bg-ui-accent/80 text-black px-6 py-2.5 rounded-xl font-extrabold text-sm uppercase tracking-wider transition shadow-lg cursor-pointer"
         >
           <Play className="w-4 h-4 fill-black" />
-          <span>Start Match</span>
+          <span>Select Stadium</span>
         </button>
       </div>
 

@@ -12,11 +12,16 @@ test.describe('FC27 Football Simulator E2E Flow', () => {
     await expect(page).toHaveURL(/.*team-selection/)
     await expect(page.locator('text=Select Teams')).toBeVisible()
 
-    // 3. Click Start Match to enter 3D match
-    await page.click('text=Start Match')
+    // 3. Click Select Stadium to go to Stadium Selection
+    await page.click('text=Select Stadium')
+    await expect(page).toHaveURL(/.*stadium-selection/)
+    await expect(page.locator('h1:has-text("Select Stadium")')).toBeVisible()
+
+    // 4. Click Start Match to enter 3D match
+    await page.click('button:has-text("Start Match")')
     await expect(page).toHaveURL(/.*match/)
 
-    // 4. Verify 3D canvas and radar canvas are mounted and HUD is active
+    // 5. Verify 3D canvas and radar canvas are mounted and HUD is active
     const threeCanvas = page.locator('canvas').first()
     await expect(threeCanvas).toBeVisible()
 

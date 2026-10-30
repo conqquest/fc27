@@ -15,6 +15,8 @@ import { useInput, isKeyHeld } from '../hooks/useInput'
 import { useTeamStore } from '../store/teamStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useMatchStore } from '../store/matchStore'
+import { useStadiumStore } from '../store/stadiumStore'
+import { getStadiumConfig } from '../data/stadiums'
 import { getTeamById } from '../data/teams'
 import type { Vec3 } from '../data/types'
 
@@ -208,6 +210,8 @@ export default function MatchScene() {
 
   const homeTeam = useMemo(() => getTeamById(homeTeamId || 'real-madrid'), [homeTeamId])
   const awayTeam = useMemo(() => getTeamById(awayTeamId || 'manchester-city'), [awayTeamId])
+  const { selectedStadiumId } = useStadiumStore()
+  const stadiumConfig = useMemo(() => getStadiumConfig(selectedStadiumId), [selectedStadiumId])
 
   const { config: cameraConfig } = useCamera()
   const [renderTrigger, setRenderTrigger] = useState(0)
@@ -298,22 +302,26 @@ export default function MatchScene() {
   const ballVel = sim.ballPhysics.getVelocity()
 
   return (
-    <div className="relative w-screen h-screen bg-[#87ceeb] overflow-hidden select-none">
+    <div
+      className="relative w-screen h-screen overflow-hidden select-none"
+      style={{ backgroundColor: stadiumConfig.skyColor }}
+    >
       {/* ─── 3D WebGL Canvas ─── */}
       <Canvas
         shadows={settings.graphics.shadows}
         camera={{ position: [28, 16, 0], fov: 40 }}
         className="w-full h-full"
       >
-        {/* Voxel Sky and Soft Horizon Distance Fog */}
-        <color attach="background" args={['#87ceeb']} />
-        <fog attach="fog" args={['#87ceeb', 110, 320]} />
+        {/* Voxel Sky and Soft Horizon Distance Fog based on selected Stadium */}
+        <color attach="background" args={[stadiumConfig.skyColor]} />
+        <fog attach="fog" args={[stadiumConfig.fogColor, stadiumConfig.fogNear, stadiumConfig.fogFar]} />
 
-        {/* Ambient & Daylight Sunlight for Voxel Colors */}
-        <ambientLight intensity={0.92} color="#f8fafc" />
+        {/* Ambient & Daylight Sunlight / Stadium Floodlights for Voxel Colors */}
+        <ambientLight intensity={stadiumConfig.ambientLightIntensity} color={stadiumConfig.ambientLightColor} />
         <directionalLight
-          position={[15, 85, 20]}
-          intensity={1.4}
+          position={stadiumConfig.sunPosition}
+          intensity={stadiumConfig.sunIntensity}
+          color={stadiumConfig.sunColor}
           castShadow={settings.graphics.shadows}
           shadow-mapSize={[2048, 2048]}
           shadow-camera-left={-70}
@@ -325,8 +333,8 @@ export default function MatchScene() {
           shadow-bias={-0.0003}
         />
 
-        {/* 3D Voxel Pitch, Dugouts, Trees, and Surrounding City */}
-        <Stadium />
+        {/* 3D Voxel Pitch and Selected Stadium Environment */}
+        <Stadium stadiumId={selectedStadiumId} />
 
         {/* 22 3D Animated Voxel Players with dynamic kits & pass target highlights */}
         {sim.simPlayers.map((player) => (
