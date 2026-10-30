@@ -204,6 +204,26 @@ export const PlayerMesh: React.FC<PlayerMeshProps> = ({
         </group>
       )}
 
+      {/* ─── Teammate Secondary Pressure Indicator (Green Marker) ─── */}
+      {!isControlled && player.isPressingTeammate && (
+        <group position={[0, 0.035, 0]}>
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.75, 0.9, 16]} />
+            <meshBasicMaterial color="#10b981" side={THREE.DoubleSide} transparent opacity={0.85} />
+          </mesh>
+          <group position={[0, 2.3, 0]}>
+            <mesh position={[0, 0.1, 0]}>
+              <boxGeometry args={[0.12, 0.22, 0.12]} />
+              <meshBasicMaterial color="#10b981" />
+            </mesh>
+            <mesh position={[0, -0.08, 0]} rotation={[0, 0, Math.PI]}>
+              <coneGeometry args={[0.18, 0.2, 4]} />
+              <meshBasicMaterial color="#10b981" />
+            </mesh>
+          </group>
+        </group>
+      )}
+
       {/* ─── Controlled Player Surrounding Voxel Circle Indicator ─── */}
       {isControlled && (
         <group position={[0, 0.03, 0]}>

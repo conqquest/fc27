@@ -34,6 +34,7 @@ const MatchEngineBridge: React.FC<{
   const lastSwitchTime = useRef(0)
   const lastTackleTime = useRef(0)
   const wasShootPressed = useRef(false)
+  const wasSPressed = useRef(false)
   const lastMoveMethod = useRef<'arrows' | 'wasd'>('arrows')
 
   useFrame((_, delta) => {
