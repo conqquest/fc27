@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import MainMenu from '@/menus/MainMenu'
 import TeamSelection from '@/menus/TeamSelection'
+import StadiumSelection from '@/menus/StadiumSelection'
 import SquadManagement from '@/menus/SquadManagement'
 import KitSelection from '@/menus/KitSelection'
 import TacticsScreen from '@/menus/TacticsScreen'
@@ -15,6 +16,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<MainMenu />} />
       <Route path="/team-selection" element={<TeamSelection />} />
+      <Route path="/stadium-selection" element={<StadiumSelection />} />
       <Route path="/squad" element={<SquadManagement />} />
       <Route path="/kit" element={<KitSelection />} />
       <Route path="/tactics" element={<TacticsScreen />} />
