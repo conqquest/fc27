@@ -679,7 +679,7 @@ export class SimulationLoop {
     this.callbacks.onStatsUpdate?.(this.stats)
   }
 
-  public performTackle(): void {
+  public performTackle(isSlide: boolean = false): void {
     const controlled = this.simPlayers.find((p) => p.id === this.controlledPlayerId && p.isOnPitch)
     if (!controlled) return
 
@@ -689,8 +689,9 @@ export class SimulationLoop {
     const toBall = vec3.sub(ballPos, controlled.position)
     if (vec3.length(toBall) > 0.1) {
       const lungeDir = vec3.normalize(toBall)
-      controlled.position.x += lungeDir.x * 0.42
-      controlled.position.z += lungeDir.z * 0.42
+      const lungeDist = isSlide ? 0.75 : 0.38
+      controlled.position.x += lungeDir.x * lungeDist
+      controlled.position.z += lungeDir.z * lungeDist
     }
 
     const opponents = this.simPlayers.filter((p) => p.teamIndex === 1 && p.isOnPitch)
@@ -701,7 +702,7 @@ export class SimulationLoop {
     const victim = opponentHolder || nearestOpp
 
     if (victim) {
-      const foulDecision = this.referee.checkTackle(controlled, victim, distToBall, true)
+      const foulDecision = this.referee.checkTackle(controlled, victim, distToBall, isSlide)
       if (foulDecision.type) {
         this.stats.fouls[0] += 1
 
@@ -719,7 +720,8 @@ export class SimulationLoop {
     }
 
     // Clean tackle
-    if (distToBall < 2.5) {
+    const reachRadius = isSlide ? 2.8 : 2.2
+    if (distToBall < reachRadius) {
       for (const p of this.simPlayers) p.hasBall = false
       controlled.hasBall = true
       this.lastTouchedTeam = 0
