@@ -22,6 +22,14 @@ export class MatchStateMachine {
         this.phase === 'KICK_OFF' ||
         this.phase === 'PLAYING' ||
         this.phase === 'SET_PIECE' ||
+        this.phase === 'ADVANTAGE' ||
+        this.phase === 'FREE_KICK' ||
+        this.phase === 'PENALTY' ||
+        this.phase === 'THROW_IN' ||
+        this.phase === 'CORNER' ||
+        this.phase === 'GOAL_KICK' ||
+        this.phase === 'OFFSIDE' ||
+        this.phase === 'FOUL' ||
         this.phase === 'GOAL_CELEBRATION'
       )
     }
@@ -30,23 +38,51 @@ export class MatchStateMachine {
       case 'PRE_MATCH':
         return to === 'KICK_OFF' || to === 'PLAYING' || to === 'SET_PIECE'
       case 'KICK_OFF':
-        return to === 'PLAYING' || to === 'SET_PIECE'
+        return to === 'PLAYING' || to === 'SET_PIECE' || to === 'FREE_KICK'
       case 'PLAYING':
+      case 'ADVANTAGE':
         return (
           to === 'GOAL_CELEBRATION' ||
           to === 'SET_PIECE' ||
+          to === 'FREE_KICK' ||
+          to === 'PENALTY' ||
+          to === 'THROW_IN' ||
+          to === 'CORNER' ||
+          to === 'GOAL_KICK' ||
+          to === 'OFFSIDE' ||
+          to === 'FOUL' ||
+          to === 'ADVANTAGE' ||
+          to === 'PLAYING' ||
           to === 'HALF_TIME' ||
           to === 'FULL_TIME' ||
           to === 'EXTRA_TIME'
         )
       case 'SET_PIECE':
+      case 'FREE_KICK':
+      case 'PENALTY':
+      case 'THROW_IN':
+      case 'CORNER':
+      case 'GOAL_KICK':
+      case 'OFFSIDE':
+      case 'FOUL':
         return (
           to === 'PLAYING' ||
+          to === 'SET_PIECE' ||
+          to === 'FREE_KICK' ||
+          to === 'PENALTY' ||
           to === 'HALF_TIME' ||
           to === 'FULL_TIME'
         )
       case 'PAUSED':
-        return to === 'PLAYING' || to === 'SET_PIECE' || to === 'KICK_OFF' || to === 'PRE_MATCH'
+        return (
+          to === 'PLAYING' ||
+          to === 'SET_PIECE' ||
+          to === 'FREE_KICK' ||
+          to === 'PENALTY' ||
+          to === 'KICK_OFF' ||
+          to === 'PRE_MATCH' ||
+          to === 'ADVANTAGE'
+        )
       case 'GOAL_CELEBRATION':
         return to === 'KICK_OFF' || to === 'PLAYING'
       case 'HALF_TIME':
@@ -54,9 +90,9 @@ export class MatchStateMachine {
       case 'EXTRA_TIME':
         return to === 'PENALTY_SHOOTOUT' || to === 'FULL_TIME' || to === 'PLAYING'
       case 'PENALTY_SHOOTOUT':
-        return to === 'FULL_TIME'
+        return to === 'FULL_TIME' || to === 'PENALTY_SHOOTOUT'
       case 'FULL_TIME':
-        return to === 'PRE_MATCH'
+        return to === 'PRE_MATCH' || to === 'EXTRA_TIME' || to === 'PENALTY_SHOOTOUT'
       default:
         return false
     }

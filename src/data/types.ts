@@ -171,30 +171,37 @@ export type MatchPhase =
   | 'PRE_MATCH' | 'KICK_OFF' | 'PLAYING' | 'PAUSED'
   | 'GOAL_CELEBRATION' | 'SET_PIECE' | 'HALF_TIME' | 'EXTRA_TIME'
   | 'PENALTY_SHOOTOUT' | 'FULL_TIME'
+  | 'ADVANTAGE' | 'OFFSIDE' | 'FOUL' | 'FREE_KICK' | 'PENALTY'
+  | 'THROW_IN' | 'CORNER' | 'GOAL_KICK'
 
 export interface MatchAnnouncement {
   title: string
   subtitle?: string
-  type: 'goal' | 'offside' | 'corner' | 'throw_in' | 'goal_kick' | 'foul' | 'penalty' | 'save' | 'info'
+  type: 'goal' | 'offside' | 'corner' | 'throw_in' | 'goal_kick' | 'foul' | 'penalty' | 'save' | 'info' | 'advantage' | 'card'
   durationMs: number
+  card?: 'yellow' | 'red'
+  playerName?: string
 }
 
 export interface SetPieceState {
-  type: 'THROW_IN' | 'CORNER' | 'GOAL_KICK' | 'FREE_KICK' | 'PENALTY'
+  type: 'THROW_IN' | 'CORNER' | 'GOAL_KICK' | 'FREE_KICK' | 'PENALTY' | 'DROPPED_BALL'
   teamIndex: 0 | 1
   position: Vec3
   takerId: string
   timer: number
+  isIndirect?: boolean
+  wallPosition?: Vec3
 }
 
 export type SetPieceType =
   | 'NONE' | 'CORNER_LEFT' | 'CORNER_RIGHT'
-  | 'THROW_IN' | 'FREE_KICK' | 'PENALTY' | 'GOAL_KICK' | 'KICK_OFF'
+  | 'THROW_IN' | 'FREE_KICK' | 'PENALTY' | 'GOAL_KICK' | 'KICK_OFF' | 'DROPPED_BALL'
 
 export interface MatchEvent {
   id: string
   type: 'GOAL' | 'YELLOW_CARD' | 'RED_CARD' | 'SUBSTITUTION' | 'FOUL'
         | 'CORNER' | 'OFFSIDE' | 'PENALTY' | 'SAVE' | 'HALF_TIME' | 'FULL_TIME'
+        | 'ADVANTAGE' | 'HANDBALL'
   minute: number
   teamId: string
   playerId?: string
@@ -216,6 +223,49 @@ export interface MatchStats {
   distanceCovered: [number, number]
 }
 
+// ─── Offside, Advantage & Shootout Models ───────────────────────────────────
+
+export interface OffsideSnapshot {
+  id: string
+  timestamp: number
+  passerId: string
+  passerTeam: 0 | 1
+  ballPosition: Vec3
+  restartSource?: 'normal' | 'throw_in' | 'corner' | 'goal_kick'
+  offsidePlayerIds: string[]
+  secondLastDefenderZ: number
+  active: boolean
+}
+
+export interface AdvantageState {
+  foulType: string
+  foulTeam: 0 | 1
+  offencePosition: Vec3
+  offenderId: string
+  victimId: string
+  isPenalty: boolean
+  card?: 'yellow' | 'red'
+  startTime: number
+  duration: number
+  active: boolean
+}
+
+export interface ShootoutAttempt {
+  teamIndex: 0 | 1
+  takerId: string
+  scored: boolean
+  round: number
+}
+
+export interface PenaltyShootoutState {
+  active: boolean
+  currentRound: number
+  currentTurnTeam: 0 | 1
+  attempts: ShootoutAttempt[]
+  score: [number, number]
+  winner: 0 | 1 | null
+}
+
 // ─── In-match player simulation state ────────────────────────────────────────
 
 export type PlayerRole = 'attacker' | 'midfielder' | 'defender' | 'goalkeeper'
@@ -235,6 +285,8 @@ export interface SimPlayer {
   slotIndex: number          // formation slot
   isOnPitch: boolean
   isSprinting: boolean
+  yellowCards?: number
+  isRedCarded?: boolean
 }
 
 export interface SimBall {
@@ -245,6 +297,9 @@ export interface SimBall {
   lastTouchedTeam: 0 | 1 | null
   lastTouchedPlayerId: string | null
   isInPlay: boolean
+  lastKickType?: 'normal' | 'indirect_free_kick' | 'throw_in' | 'direct_free_kick' | 'corner' | 'goal_kick'
+  kickerId?: string | null
+  touchCountSinceRestart?: number
 }
 
 export interface MatchState {
