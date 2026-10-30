@@ -270,6 +270,23 @@ export interface PenaltyShootoutState {
 
 export type PlayerRole = 'attacker' | 'midfielder' | 'defender' | 'goalkeeper'
 
+export type AIPlayerState =
+  | 'SUPPORT_ATTACK'
+  | 'DRIBBLING'
+  | 'PASSING'
+  | 'THROUGH_BALL'
+  | 'SHOOTING'
+  | 'CROSSING'
+  | 'MAKING_FORWARD_RUN'
+  | 'PRESSING'
+  | 'TRACKING_OPPONENT'
+  | 'BLOCKING_PASSING_LANE'
+  | 'INTERCEPTING'
+  | 'TACKLING'
+  | 'MARKING'
+  | 'RECOVERING_POSITION'
+  | 'GOALKEEPER'
+
 export interface SimPlayer {
   id: string
   teamIndex: 0 | 1
@@ -287,6 +304,9 @@ export interface SimPlayer {
   isSprinting: boolean
   yellowCards?: number
   isRedCarded?: boolean
+  aiState?: AIPlayerState
+  isPressingTeammate?: boolean
+  markedOpponentId?: string | null
 }
 
 export interface SimBall {
@@ -333,6 +353,8 @@ export interface KeyBindings {
   throughBall: string
   crossOrLoft: string
   tackle: string
+  switchPlayer?: string
+  teammatePressure?: string
   toggleRadar: string
   pause: string
 }
