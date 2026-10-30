@@ -106,7 +106,10 @@ export class TeamAI {
       if (!player.isOnPitch) continue
 
       // Controlled player movements are driven by user input
-      if (player.isControlled) continue
+      if (player.isControlled) {
+        player.isPressingTeammate = false
+        continue
+      }
 
       const isGK = player.role === 'goalkeeper'
       const anchor = formationAnchors[i] || { x: 0, y: 0, z: 0 }

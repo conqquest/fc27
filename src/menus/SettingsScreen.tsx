@@ -33,6 +33,8 @@ export default function SettingsScreen() {
     throughBall: 'Through Ball',
     crossOrLoft: 'Cross / Lofted Pass',
     tackle: 'Tackle (Defending)',
+    switchPlayer: 'Switch Defender (Defending)',
+    teammatePressure: 'Teammate Pressure (Defending)',
     toggleRadar: 'Toggle Tactical Radar',
     pause: 'Pause Match',
   }

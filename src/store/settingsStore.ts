@@ -12,6 +12,8 @@ const DEFAULT_KEYS: KeyBindings = {
   throughBall: 'q',
   crossOrLoft: 'f',
   tackle: ' ',
+  switchPlayer: 's',
+  teammatePressure: 'q',
   toggleRadar: 'Tab',
   pause: 'Escape',
 }

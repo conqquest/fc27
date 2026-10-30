@@ -100,23 +100,25 @@ const MatchEngineBridge: React.FC<{
     const controlled = sim.simPlayers.find((p) => p.id === sim.controlledPlayerId)
     const hasPossession = controlled?.hasBall || false
 
-    // 2. Action: Pass (A key, J key, Left-Click on grass / HUD)
+    // 2. Action: Pass (A key, J key, Left-Click on grass / HUD) - when in possession
     const isPassPressed =
-      inputState.mouseButtons.has(0) ||
-      isKeyHeld(inputState, 'j') ||
-      (lastMoveMethod.current === 'arrows' && isKeyHeld(inputState, 'a')) ||
-      (isKeyHeld(inputState, 'a') && hasPossession && !isW && !isS && !isD)
+      hasPossession &&
+      (inputState.mouseButtons.has(0) ||
+        isKeyHeld(inputState, 'j') ||
+        (lastMoveMethod.current === 'arrows' && isKeyHeld(inputState, 'a')) ||
+        (isKeyHeld(inputState, 'a') && !isW && !isS && !isD))
 
     if (isPassPressed && now - lastPassTime.current > 280) {
       sim.performPass(false, false, aimAngle)
       lastPassTime.current = now
     }
 
-    // 3. Action: Through Ball (W key when using arrow keys, Q key, or keyBindings)
+    // 3. Action: Through Ball (W key when using arrow keys, Q key, or keyBindings) - when in possession
     const isThroughPressed =
-      isKeyHeld(inputState, keyBindings.throughBall) ||
-      isKeyHeld(inputState, 'q') ||
-      (lastMoveMethod.current === 'arrows' && isKeyHeld(inputState, 'w'))
+      hasPossession &&
+      (isKeyHeld(inputState, keyBindings.throughBall) ||
+        isKeyHeld(inputState, 'q') ||
+        (lastMoveMethod.current === 'arrows' && isKeyHeld(inputState, 'w')))
 
     if (isThroughPressed && now - lastPassTime.current > 300) {
       sim.performPass(true, false, aimAngle)
@@ -125,10 +127,11 @@ const MatchEngineBridge: React.FC<{
 
     // 4. Action: Cross / Lofted Pass (D key, F key, or Right-Click when in possession)
     const isCrossPressed =
-      isKeyHeld(inputState, keyBindings.crossOrLoft) ||
-      isKeyHeld(inputState, 'f') ||
-      (lastMoveMethod.current === 'arrows' && isKeyHeld(inputState, 'd')) ||
-      (hasPossession && inputState.mouseButtons.has(2))
+      hasPossession &&
+      (isKeyHeld(inputState, keyBindings.crossOrLoft) ||
+        isKeyHeld(inputState, 'f') ||
+        (lastMoveMethod.current === 'arrows' && isKeyHeld(inputState, 'd')) ||
+        inputState.mouseButtons.has(2))
 
     if (isCrossPressed && now - lastPassTime.current > 300) {
       sim.performPass(false, true, aimAngle)
@@ -138,8 +141,8 @@ const MatchEngineBridge: React.FC<{
     // 5. Action: Shoot with Hold-to-Charge (Spacebar when in possession, E, K)
     const isShootKeyHeld =
       (hasPossession && isKeyHeld(inputState, ' ')) ||
-      isKeyHeld(inputState, keyBindings.shoot) ||
-      isKeyHeld(inputState, 'k')
+      (hasPossession && isKeyHeld(inputState, keyBindings.shoot)) ||
+      (hasPossession && isKeyHeld(inputState, 'k'))
 
     if (isShootKeyHeld) {
       if (!wasShootPressed.current) {
@@ -154,30 +157,48 @@ const MatchEngineBridge: React.FC<{
       }
     }
 
-    // 6. Action: Player Switch (Q when defending, Tab, Right-Click when defending, L)
-    const isSwitchPressed =
-      (!hasPossession && inputState.mouseButtons.has(2)) ||
-      isKeyHeld(inputState, 'tab') ||
-      isKeyHeld(inputState, 'l') ||
-      (!hasPossession && isKeyHeld(inputState, 'q'))
+    // 6. Action: Player Switch with S key / Tab / L / Right-click when defending
+    const sHeld =
+      isKeyHeld(inputState, 's') ||
+      (keyBindings.switchPlayer ? isKeyHeld(inputState, keyBindings.switchPlayer) : false)
+    const isSTapped = sHeld && !wasSPressed.current
+    wasSPressed.current = sHeld
 
-    if (isSwitchPressed && now - lastSwitchTime.current > 250) {
+    const isSwitchPressed =
+      (!hasPossession && isSTapped) ||
+      (!hasPossession && inputState.mouseButtons.has(2) && now - lastSwitchTime.current > 250) ||
+      (isKeyHeld(inputState, 'tab') && now - lastSwitchTime.current > 250) ||
+      (isKeyHeld(inputState, 'l') && now - lastSwitchTime.current > 250)
+
+    if (isSwitchPressed && now - lastSwitchTime.current > 200) {
       sim.switchControlledPlayer()
       lastSwitchTime.current = now
     }
 
-    // 7. Action: Tackle (E key when defending, Space when defending)
-    const isTacklePressed =
-      (!hasPossession && isKeyHeld(inputState, ' ')) ||
-      (!hasPossession && isKeyHeld(inputState, keyBindings.tackle)) ||
-      (!hasPossession && isKeyHeld(inputState, 'e'))
+    // 7. Defensive Gameplay: Teammate secondary pressure (holding Q or keyBindings.teammatePressure)
+    const isTeammatePressureActive =
+      !hasPossession &&
+      (isKeyHeld(inputState, 'q') ||
+        (keyBindings.teammatePressure ? isKeyHeld(inputState, keyBindings.teammatePressure) : false))
+    sim.setTeammatePressure(isTeammatePressureActive)
 
-    if (isTacklePressed && now - lastTackleTime.current > 350) {
-      sim.performTackle()
-      lastTackleTime.current = now
+    // 8. Defensive Gameplay: Tackles
+    // E key: Standing tackle (radius 2.2m, lower foul risk)
+    // Spacebar: Slide tackle (radius 2.8m, higher reach, foul risk)
+    if (!hasPossession) {
+      const isSlideTackle = isKeyHeld(inputState, ' ')
+      const isStandingTackle = isKeyHeld(inputState, 'e') || isKeyHeld(inputState, keyBindings.tackle)
+
+      if (isSlideTackle && now - lastTackleTime.current > 400) {
+        sim.performTackle(true)
+        lastTackleTime.current = now
+      } else if (isStandingTackle && now - lastTackleTime.current > 350) {
+        sim.performTackle(false)
+        lastTackleTime.current = now
+      }
     }
 
-    // 8. Step the simulation loop
+    // 9. Step the simulation loop
     sim.update(delta, moveVector, isSprinting)
     onUpdate()
   })
@@ -222,17 +243,38 @@ export default function MatchScene() {
 
   // Instantiate the SimulationLoop
   const sim = useMemo(() => {
-    return new SimulationLoop(homeTeam, awayTeam, settings.matchDuration || 5, {
-      onPhaseChange: (p) => setPhase(p),
-      onClockTick: (m, h) => {
-        setMinute(m)
-        setHalf(h)
+    return new SimulationLoop(
+      homeTeam,
+      awayTeam,
+      settings.matchDuration || 5,
+      {
+        onPhaseChange: (p) => setPhase(p),
+        onClockTick: (m, h) => {
+          setMinute(m)
+          setHalf(h)
+        },
+        onStatsUpdate: (s) => updateStats(s),
+        onAnnouncement: (a) => setAnnouncement(a),
+        onShotCharge: (ratio) => setShotPower(Math.round(ratio * 100)),
       },
-      onStatsUpdate: (s) => updateStats(s),
-      onAnnouncement: (a) => setAnnouncement(a),
-      onShotCharge: (ratio) => setShotPower(Math.round(ratio * 100)),
-    })
-  }, [homeTeam, awayTeam, settings.matchDuration, setPhase, setMinute, setHalf, updateStats, setAnnouncement, setShotPower])
+      settings.difficulty || 'medium'
+    )
+  }, [
+    homeTeam,
+    awayTeam,
+    settings.matchDuration,
+    settings.difficulty,
+    setPhase,
+    setMinute,
+    setHalf,
+    updateStats,
+    setAnnouncement,
+    setShotPower,
+  ])
+
+  useEffect(() => {
+    sim.setDifficulty(settings.difficulty || 'medium')
+  }, [sim, settings.difficulty])
 
   const handleUpdate = () => {
     setRenderTrigger((prev) => (prev + 1) % 100000)
@@ -442,7 +484,17 @@ export default function MatchScene() {
         }}
         onTackle={() => {
           handleResumeFromGoal()
-          sim.performTackle()
+          sim.performTackle(false)
+        }}
+        onSlideTackle={() => {
+          handleResumeFromGoal()
+          sim.performTackle(true)
+        }}
+        onTeammatePressureStart={() => {
+          sim.setTeammatePressure(true)
+        }}
+        onTeammatePressureEnd={() => {
+          sim.setTeammatePressure(false)
         }}
         onSprintToggle={() => setVirtualSprint((prev) => !prev)}
         onVirtualMove={(move) => {

@@ -28,6 +28,9 @@ interface MatchHUDProps {
   onCross?: () => void
   onSwitchPlayer?: () => void
   onTackle?: () => void
+  onSlideTackle?: () => void
+  onTeammatePressureStart?: () => void
+  onTeammatePressureEnd?: () => void
   onSprintToggle?: () => void
   onVirtualMove?: (moveVector: Vec3) => void
   onResumeFromGoal?: () => void
@@ -58,6 +61,9 @@ export const MatchHUD: React.FC<MatchHUDProps> = ({
   onCross,
   onSwitchPlayer,
   onTackle,
+  onSlideTackle,
+  onTeammatePressureStart,
+  onTeammatePressureEnd,
   onSprintToggle,
   onVirtualMove,
   onResumeFromGoal,
@@ -394,111 +400,217 @@ export const MatchHUD: React.FC<MatchHUDProps> = ({
           <span className="font-bold text-white">↑↓←→</span>
           <span className="text-white/50">Move</span>
           <span className="text-white/30">•</span>
-          <span className="font-bold text-emerald-400">A</span>
-          <span className="text-white/50">Pass</span>
-          <span className="text-white/30">•</span>
-          <span className="font-bold text-rose-400">Space</span>
-          <span className="text-white/50">Shoot</span>
+          {hasPossession ? (
+            <>
+              <span className="font-bold text-emerald-400">A</span>
+              <span className="text-white/50">Pass</span>
+              <span className="text-white/30">•</span>
+              <span className="font-bold text-rose-400">Space</span>
+              <span className="text-white/50">Shoot</span>
+              <span className="text-white/30">•</span>
+              <span className="font-bold text-indigo-300">W</span>
+              <span className="text-white/50">Through</span>
+            </>
+          ) : (
+            <>
+              <span className="font-bold text-cyan-300">S</span>
+              <span className="text-white/50">Switch</span>
+              <span className="text-white/30">•</span>
+              <span className="font-bold text-emerald-300">Q</span>
+              <span className="text-white/50">Press</span>
+              <span className="text-white/30">•</span>
+              <span className="font-bold text-orange-400">E</span>
+              <span className="text-white/50">Tackle</span>
+              <span className="text-white/30">•</span>
+              <span className="font-bold text-red-400">Space</span>
+              <span className="text-white/50">Slide</span>
+            </>
+          )}
         </div>
 
         {/* Clickable Action Buttons Grid (For Mouse and Touch Gameplay) */}
         <div className="grid grid-cols-3 gap-2.5 bg-ui-dark/85 backdrop-blur-md p-3.5 rounded-2xl border border-white/15 shadow-2xl">
-          {/* PASS Button */}
-          <button
-            onPointerDown={(e) => {
-              e.stopPropagation()
-              e.preventDefault()
-              onPass?.()
-            }}
-            className="group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 hover:from-emerald-400 hover:to-teal-600 active:scale-95 transition-all shadow-lg border border-emerald-300/30 cursor-pointer"
-          >
-            <span className="text-sm font-black text-white tracking-wider">PASS</span>
-            <span className="text-[10px] font-mono font-bold text-emerald-200">A / L-CLK</span>
-          </button>
+          {hasPossession ? (
+            <>
+              {/* PASS Button */}
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onPass?.()
+                }}
+                className="group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 hover:from-emerald-400 hover:to-teal-600 active:scale-95 transition-all shadow-lg border border-emerald-300/30 cursor-pointer"
+              >
+                <span className="text-sm font-black text-white tracking-wider">PASS</span>
+                <span className="text-[10px] font-mono font-bold text-emerald-200">A / L-CLK</span>
+              </button>
 
-          {/* SHOOT Button with Hold-to-Charge */}
-          <button
-            onPointerDown={(e) => {
-              e.stopPropagation()
-              e.preventDefault()
-              onShootStart?.()
-            }}
-            onPointerUp={(e) => {
-              e.stopPropagation()
-              e.preventDefault()
-              onShootEnd?.()
-            }}
-            onPointerLeave={(e) => {
-              e.stopPropagation()
-              if (shotPower > 0) onShootEnd?.()
-            }}
-            className="group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-rose-500 to-amber-600 hover:from-rose-400 hover:to-amber-500 active:scale-95 transition-all shadow-lg border border-rose-300/30 cursor-pointer"
-          >
-            <span className="text-sm font-black text-white tracking-wider">SHOOT</span>
-            <span className="text-[10px] font-mono font-bold text-rose-200">SPACE / E</span>
-            {shotPower > 0 && (
-              <div
-                className="absolute inset-0 rounded-xl bg-white/25 animate-pulse"
-                style={{ opacity: shotPower / 100 }}
-              />
-            )}
-          </button>
+              {/* SHOOT Button with Hold-to-Charge */}
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onShootStart?.()
+                }}
+                onPointerUp={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onShootEnd?.()
+                }}
+                onPointerLeave={(e) => {
+                  e.stopPropagation()
+                  if (shotPower > 0) onShootEnd?.()
+                }}
+                className="group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-rose-500 to-amber-600 hover:from-rose-400 hover:to-amber-500 active:scale-95 transition-all shadow-lg border border-rose-300/30 cursor-pointer"
+              >
+                <span className="text-sm font-black text-white tracking-wider">SHOOT</span>
+                <span className="text-[10px] font-mono font-bold text-rose-200">SPACE / E</span>
+                {shotPower > 0 && (
+                  <div
+                    className="absolute inset-0 rounded-xl bg-white/25 animate-pulse"
+                    style={{ opacity: shotPower / 100 }}
+                  />
+                )}
+              </button>
 
-          {/* THROUGH BALL Button */}
-          <button
-            onPointerDown={(e) => {
-              e.stopPropagation()
-              e.preventDefault()
-              onThroughBall?.()
-            }}
-            className="group flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-700 hover:from-indigo-400 hover:to-purple-600 active:scale-95 transition-all shadow-lg border border-indigo-300/30 cursor-pointer"
-          >
-            <span className="text-xs font-black text-white tracking-wider">THROUGH</span>
-            <span className="text-[10px] font-mono font-bold text-indigo-200">W / Q</span>
-          </button>
+              {/* THROUGH BALL Button */}
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onThroughBall?.()
+                }}
+                className="group flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-700 hover:from-indigo-400 hover:to-purple-600 active:scale-95 transition-all shadow-lg border border-indigo-300/30 cursor-pointer"
+              >
+                <span className="text-xs font-black text-white tracking-wider">THROUGH</span>
+                <span className="text-[10px] font-mono font-bold text-indigo-200">W / Q</span>
+              </button>
 
-          {/* CROSS / LOFTED PASS Button */}
-          <button
-            onPointerDown={(e) => {
-              e.stopPropagation()
-              e.preventDefault()
-              onCross?.()
-            }}
-            className="group flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-700 hover:from-blue-400 hover:to-cyan-600 active:scale-95 transition-all shadow-lg border border-blue-300/30 cursor-pointer"
-          >
-            <span className="text-sm font-black text-white tracking-wider">CROSS</span>
-            <span className="text-[10px] font-mono font-bold text-blue-200">D / F</span>
-          </button>
+              {/* CROSS / LOFTED PASS Button */}
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onCross?.()
+                }}
+                className="group flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-700 hover:from-blue-400 hover:to-cyan-600 active:scale-95 transition-all shadow-lg border border-blue-300/30 cursor-pointer"
+              >
+                <span className="text-sm font-black text-white tracking-wider">CROSS</span>
+                <span className="text-[10px] font-mono font-bold text-blue-200">D / F</span>
+              </button>
 
-          {/* SWITCH PLAYER Button */}
-          <button
-            onPointerDown={(e) => {
-              e.stopPropagation()
-              e.preventDefault()
-              onSwitchPlayer?.()
-            }}
-            className="group flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-cyan-600 to-teal-800 hover:from-cyan-500 hover:to-teal-700 active:scale-95 transition-all shadow-lg border border-cyan-300/30 cursor-pointer"
-          >
-            <span className="text-xs font-black text-white tracking-wider">SWITCH</span>
-            <span className="text-[10px] font-mono font-bold text-cyan-200">TAB / R-CLK</span>
-          </button>
+              {/* SWITCH PLAYER Button */}
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onSwitchPlayer?.()
+                }}
+                className="group flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-cyan-600 to-teal-800 hover:from-cyan-500 hover:to-teal-700 active:scale-95 transition-all shadow-lg border border-cyan-300/30 cursor-pointer"
+              >
+                <span className="text-xs font-black text-white tracking-wider">SWITCH</span>
+                <span className="text-[10px] font-mono font-bold text-cyan-200">S / TAB</span>
+              </button>
 
-          {/* TACKLE Button */}
-          <button
-            onPointerDown={(e) => {
-              e.stopPropagation()
-              e.preventDefault()
-              onTackle?.()
-            }}
-            className={`group flex flex-col items-center justify-center w-16 h-16 rounded-xl ${
-              !hasPossession
-                ? 'bg-gradient-to-br from-orange-500 to-red-700 border-orange-300 ring-2 ring-orange-400/50'
-                : 'bg-gradient-to-br from-gray-700 to-gray-800 border-white/10 opacity-70'
-            } active:scale-95 transition-all shadow-lg cursor-pointer`}
-          >
-            <span className="text-xs font-black text-white tracking-wider">TACKLE</span>
-            <span className="text-[10px] font-mono font-bold text-orange-200">E / SPACE</span>
-          </button>
+              {/* TACKLE (Standby in Possession) */}
+              <button
+                disabled
+                className="group flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-gray-700 to-gray-800 border-white/10 opacity-50 cursor-not-allowed"
+              >
+                <span className="text-xs font-black text-white/50 tracking-wider">TACKLE</span>
+                <span className="text-[10px] font-mono font-bold text-white/30">DEFENSE</span>
+              </button>
+            </>
+          ) : (
+            <>
+              {/* SWITCH PLAYER Button (Nearest Defender to Ball) */}
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onSwitchPlayer?.()
+                }}
+                className="group flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-700 hover:from-cyan-400 hover:to-blue-600 active:scale-95 transition-all shadow-lg border border-cyan-300/40 ring-2 ring-cyan-400/30 cursor-pointer"
+              >
+                <span className="text-xs font-black text-white tracking-wider">SWITCH</span>
+                <span className="text-[10px] font-mono font-bold text-cyan-100">S / TAB</span>
+              </button>
+
+              {/* STANDING TACKLE Button */}
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onTackle?.()
+                }}
+                className="group flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-amber-500 to-orange-700 hover:from-amber-400 hover:to-orange-600 active:scale-95 transition-all shadow-lg border border-amber-300/40 ring-2 ring-orange-400/40 cursor-pointer"
+              >
+                <span className="text-xs font-black text-white tracking-wider">TACKLE</span>
+                <span className="text-[10px] font-mono font-bold text-amber-100">E KEY</span>
+              </button>
+
+              {/* SLIDE TACKLE Button */}
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onSlideTackle?.()
+                }}
+                className="group flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-red-600 to-rose-800 hover:from-red-500 hover:to-rose-700 active:scale-95 transition-all shadow-lg border border-red-400/40 ring-2 ring-red-500/40 cursor-pointer"
+              >
+                <span className="text-xs font-black text-white tracking-wider">SLIDE</span>
+                <span className="text-[10px] font-mono font-bold text-rose-200">SPACE</span>
+              </button>
+
+              {/* TEAMMATE PRESSURE Button (Hold) */}
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onTeammatePressureStart?.()
+                }}
+                onPointerUp={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onTeammatePressureEnd?.()
+                }}
+                onPointerLeave={(e) => {
+                  e.stopPropagation()
+                  onTeammatePressureEnd?.()
+                }}
+                className="group flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-800 hover:from-emerald-500 hover:to-teal-700 active:scale-95 transition-all shadow-lg border border-emerald-400/40 ring-2 ring-emerald-500/30 cursor-pointer"
+              >
+                <span className="text-xs font-black text-white tracking-wider">PRESS</span>
+                <span className="text-[10px] font-mono font-bold text-emerald-200">Q (HOLD)</span>
+              </button>
+
+              {/* CLEAR BALL / CROSS Button */}
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onCross?.()
+                }}
+                className="group flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-700 hover:from-blue-400 hover:to-indigo-600 active:scale-95 transition-all shadow-lg border border-blue-300/30 cursor-pointer"
+              >
+                <span className="text-xs font-black text-white tracking-wider">CLEAR</span>
+                <span className="text-[10px] font-mono font-bold text-blue-200">D / F</span>
+              </button>
+
+              {/* INTERCEPT / PASS Button */}
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  onPass?.()
+                }}
+                className="group flex flex-col items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-700 hover:from-teal-400 hover:to-emerald-600 active:scale-95 transition-all shadow-lg border border-teal-300/30 cursor-pointer"
+              >
+                <span className="text-xs font-black text-white tracking-wider">PASS</span>
+                <span className="text-[10px] font-mono font-bold text-teal-200">A / L-CLK</span>
+              </button>
+            </>
+          )}
         </div>
 
         {/* SPRINT Toggle Pill */}
@@ -563,19 +675,27 @@ export const MatchHUD: React.FC<MatchHUDProps> = ({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-white/60">Shoot (Hold for Power):</span>
-                    <span className="font-bold text-rose-400">Spacebar / E / K</span>
+                    <span className="font-bold text-rose-400">Spacebar / K</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-white/60">Cross / Lofted:</span>
                     <span className="font-bold text-blue-300">D / F key</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-white/60">Switch Player:</span>
-                    <span className="font-bold text-cyan-300">Q / Tab / Right-Click</span>
+                    <span className="text-white/60">Switch Defender (Defending):</span>
+                    <span className="font-bold text-cyan-300">S / Tab / Right-Click</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-white/60">Tackle / Slide:</span>
-                    <span className="font-bold text-orange-400">E / Space (Defending)</span>
+                    <span className="text-white/60">Teammate Press (Defending):</span>
+                    <span className="font-bold text-emerald-300">Hold Q</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/60">Standing Tackle (Defending):</span>
+                    <span className="font-bold text-orange-400">E key</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/60">Slide Tackle (Defending):</span>
+                    <span className="font-bold text-red-400">Spacebar</span>
                   </div>
                 </div>
               </div>
@@ -583,36 +703,44 @@ export const MatchHUD: React.FC<MatchHUDProps> = ({
               {/* On-Screen & Mouse Controls */}
               <div className="space-y-3">
                 <h3 className="font-bold text-ui-accent uppercase tracking-wider text-xs">
-                  Mouse & Touch / Rules
+                  Touch & Tactical Features
                 </h3>
                 <div className="bg-white/5 rounded-xl p-3 space-y-2 border border-white/10 text-xs">
                   <div className="flex justify-between">
+                    <span className="text-white/60">Switch Nearest Defender:</span>
+                    <span className="font-bold text-cyan-300">Tap SWITCH (S)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/60">Teammate Secondary Press:</span>
+                    <span className="font-bold text-emerald-300">Hold PRESS (Q)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/60">Tackle / Slide (Touch):</span>
+                    <span className="font-bold text-amber-300">Tap TACKLE / SLIDE</span>
+                  </div>
+                  <div className="flex justify-between">
                     <span className="text-white/60">Pass to Teammate:</span>
-                    <span className="font-bold text-white">Left-click teammate directly</span>
+                    <span className="font-bold text-white">Tap Teammate directly</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-white/60">Touch Movement:</span>
-                    <span className="font-bold text-white">Drag Bottom-Left Joystick</span>
+                    <span className="text-white/60">Teammate Press Indicator:</span>
+                    <span className="font-bold text-emerald-400">Emerald Green Marker</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-white/60">Touch Actions:</span>
-                    <span className="font-bold text-white">Tap Bottom-Right Buttons</span>
+                    <span className="text-white/60">Intelligent Bot AI:</span>
+                    <span className="font-bold text-white">Tactical Passing & Defending</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-white/60">Offside Rule:</span>
                     <span className="font-bold text-amber-300">Evaluated on pass release</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-white/60">Set Pieces:</span>
-                    <span className="font-bold text-white">Throw-ins, Corners, Penaltys</span>
+                    <span className="text-white/60">Bot Difficulty:</span>
+                    <span className="font-bold text-yellow-300">Configurable in Settings</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-white/60">Active Player:</span>
-                    <span className="font-bold text-ui-accent">Surrounded by Cyan Ring</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-white/60">Pass Target:</span>
-                    <span className="font-bold text-yellow-400">Highlighted Yellow Ring</span>
+                    <span className="font-bold text-ui-accent">Cyan Ring Indicator</span>
                   </div>
                 </div>
               </div>
