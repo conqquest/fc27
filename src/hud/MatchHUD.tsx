@@ -8,7 +8,7 @@ interface MatchHUDProps {
   awayTeam: Team
   score: [number, number]
   minute: number
-  half: 1 | 2
+  half: 1 | 2 | 3 | 4
   phase: MatchPhase
   stats: MatchStats
   controlledPlayer: SimPlayer | null
@@ -18,7 +18,9 @@ interface MatchHUDProps {
   announcement?: MatchAnnouncement | null
   shotPower?: number // 0-100
   isSprinting?: boolean
+  showOffsideLine?: boolean
   onPauseToggle: () => void
+  onToggleOffsideLine?: () => void
   onPass?: () => void
   onShootStart?: () => void
   onShootEnd?: () => void
@@ -46,7 +48,9 @@ export const MatchHUD: React.FC<MatchHUDProps> = ({
   announcement,
   shotPower = 0,
   isSprinting = false,
+  showOffsideLine = false,
   onPauseToggle,
+  onToggleOffsideLine,
   onPass,
   onShootStart,
   onShootEnd,
@@ -144,6 +148,12 @@ export const MatchHUD: React.FC<MatchHUDProps> = ({
       case 'penalty':
       case 'foul':
         return 'from-orange-600/95 via-amber-500/90 to-orange-700/95 border-orange-300 text-white'
+      case 'advantage':
+        return 'from-amber-600/95 via-yellow-500/90 to-amber-700/95 border-yellow-300 text-black'
+      case 'card':
+        return announcement?.card === 'red'
+          ? 'from-red-700/95 via-rose-600/90 to-red-800/95 border-red-400 text-white'
+          : 'from-amber-400/95 via-yellow-300/90 to-amber-500/95 border-yellow-200 text-black'
       case 'save':
         return 'from-teal-600/95 via-cyan-500/90 to-teal-700/95 border-teal-300 text-white'
       default:
@@ -163,6 +173,12 @@ export const MatchHUD: React.FC<MatchHUDProps> = ({
               style={{ backgroundColor: homeTeam.colors.primary }}
             />
             <span className="font-extrabold text-sm tracking-wider">{homeTeam.shortName}</span>
+            {stats.redCards[0] > 0 && (
+              <span className="px-1.5 py-0.5 bg-red-600/90 text-[10px] font-bold rounded text-white flex items-center gap-0.5 shadow">
+                <span>🟥</span>
+                <span>{11 - stats.redCards[0]}</span>
+              </span>
+            )}
           </div>
 
           {/* Live Score */}
@@ -175,6 +191,12 @@ export const MatchHUD: React.FC<MatchHUDProps> = ({
           {/* Away team */}
           <div className="flex items-center gap-2 px-3.5 py-2.5">
             <span className="font-extrabold text-sm tracking-wider">{awayTeam.shortName}</span>
+            {stats.redCards[1] > 0 && (
+              <span className="px-1.5 py-0.5 bg-red-600/90 text-[10px] font-bold rounded text-white flex items-center gap-0.5 shadow">
+                <span>🟥</span>
+                <span>{11 - stats.redCards[1]}</span>
+              </span>
+            )}
             <span
               className="w-3 h-3 rounded-full border border-white/30"
               style={{ backgroundColor: awayTeam.colors.primary }}
@@ -184,9 +206,23 @@ export const MatchHUD: React.FC<MatchHUDProps> = ({
           {/* Minute & Half */}
           <div className="bg-white/10 px-3 py-2.5 text-xs font-mono font-bold text-white/90 border-l border-white/10 flex items-center gap-1.5">
             <span>{minute}'</span>
-            <span className="text-[10px] text-white/50">{half === 1 ? '1H' : '2H'}</span>
+            <span className="text-[10px] text-white/50">{half === 1 ? '1H' : half === 2 ? '2H' : 'ET'}</span>
           </div>
         </div>
+
+        {/* Offside Line Debug Toggle Button */}
+        <button
+          onClick={onToggleOffsideLine}
+          className={`px-3 py-2.5 rounded-xl border text-xs font-semibold tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow-lg active:scale-95 ${
+            showOffsideLine
+              ? 'bg-amber-400 text-black border-amber-300 font-bold'
+              : 'bg-ui-dark/85 backdrop-blur-md hover:bg-white/20 text-white/80 hover:text-white border-white/10'
+          }`}
+          title="Toggle IFAB Offside Line (Debug Mode)"
+        >
+          <span>📏</span>
+          <span>OFFSIDE LINE</span>
+        </button>
 
         {/* Controls Guide Button */}
         <button
@@ -236,7 +272,15 @@ export const MatchHUD: React.FC<MatchHUDProps> = ({
               announcement.type
             )} border-2 rounded-2xl px-8 py-3.5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] text-center flex flex-col items-center backdrop-blur-md min-w-[260px]`}
           >
-            <span className="text-2xl font-black italic tracking-widest uppercase drop-shadow-md">
+            {announcement.card && (
+              <div
+                className={`w-6 h-9 rounded mb-1.5 shadow-lg border-2 ${
+                  announcement.card === 'red' ? 'bg-red-600 border-white/60' : 'bg-yellow-400 border-black/40'
+                }`}
+              />
+            )}
+            <span className="text-2xl font-black italic tracking-widest uppercase drop-shadow-md flex items-center gap-2">
+              {announcement.type === 'advantage' && <span>⚡</span>}
               {announcement.title}
             </span>
             {announcement.subtitle && (

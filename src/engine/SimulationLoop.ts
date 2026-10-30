@@ -1,4 +1,15 @@
-import type { Team, SimPlayer, SimBall, PlayerRole, Vec3, MatchStats, MatchPhase, MatchAnnouncement, SetPieceState } from '../data/types'
+import type {
+  Team,
+  SimPlayer,
+  SimBall,
+  PlayerRole,
+  Vec3,
+  MatchStats,
+  MatchPhase,
+  MatchAnnouncement,
+  SetPieceState,
+  PenaltyShootoutState,
+} from '../data/types'
 import { BallPhysics } from './physics/BallPhysics'
 import { PlayerPhysics } from './physics/PlayerPhysics'
 import { MatchStateMachine } from './MatchStateMachine'
@@ -15,7 +26,7 @@ import { vec3, clamp } from '../utils/math'
 export interface SimulationCallbacks {
   onPhaseChange?: (phase: MatchPhase) => void
   onGoal?: (scoringTeam: 0 | 1, scorer?: SimPlayer) => void
-  onClockTick?: (minute: number, half: 1 | 2) => void
+  onClockTick?: (minute: number, half: 1 | 2 | 3 | 4) => void
   onStatsUpdate?: (stats: Partial<MatchStats>) => void
   onEvent?: (desc: string, type: string) => void
   onAnnouncement?: (announcement: MatchAnnouncement | null) => void
@@ -52,9 +63,16 @@ export class SimulationLoop {
   public shotChargeTime: number = 0
   public currentShotPower: number = 0
 
-  // Offside tracking
-  private pendingOffsideTargetId: string | null = null
-  private pendingOffsideTeam: 0 | 1 | null = null
+  // Offside tracking and debug
+  public pendingOffsideTargetId: string | null = null
+  public pendingOffsideTeam: 0 | 1 | null = null
+  public isOffsideLineVisible: boolean = false
+
+  // Rules state tracking
+  private lastRestartSource: 'normal' | 'throw_in' | 'corner' | 'goal_kick' = 'normal'
+  private isLastTouchSave: boolean = false
+  private isLastTouchDeliberatePlay: boolean = false
+  private lastDeliberateKickerId: string | null = null
 
   // Timers and cooldowns
   private announcementTimer: number = 0
@@ -81,7 +99,12 @@ export class SimulationLoop {
 
   private callbacks: SimulationCallbacks = {}
 
-  constructor(homeTeam: Team, awayTeam: Team, matchDurationMins = 5, callbacks: SimulationCallbacks = {}) {
+  constructor(
+    homeTeam: Team,
+    awayTeam: Team,
+    matchDurationMins = 5,
+    callbacks: SimulationCallbacks = {}
+  ) {
     this.homeTeam = homeTeam
     this.awayTeam = awayTeam
     this.callbacks = callbacks
@@ -123,6 +146,8 @@ export class SimulationLoop {
         slotIndex: slot,
         isOnPitch: true,
         isSprinting: false,
+        yellowCards: 0,
+        isRedCarded: false,
       }
 
       this.simPlayers.push(simP)
@@ -153,6 +178,8 @@ export class SimulationLoop {
         slotIndex: slot,
         isOnPitch: true,
         isSprinting: false,
+        yellowCards: 0,
+        isRedCarded: false,
       }
 
       this.simPlayers.push(simP)
@@ -164,9 +191,11 @@ export class SimulationLoop {
     title: string,
     subtitle?: string,
     type: MatchAnnouncement['type'] = 'info',
-    durationMs: number = 2400
+    durationMs: number = 2400,
+    card?: 'yellow' | 'red',
+    playerName?: string
   ): void {
-    const ann: MatchAnnouncement = { title, subtitle, type, durationMs }
+    const ann: MatchAnnouncement = { title, subtitle, type, durationMs, card, playerName }
     this.currentAnnouncement = ann
     this.announcementTimer = durationMs / 1000
     this.callbacks.onAnnouncement?.(ann)
@@ -181,10 +210,13 @@ export class SimulationLoop {
     this.ballPhysics.velocity = { x: 0, y: 0, z: 0 }
     this.currentSetPiece = null
     this.pendingOffsideTargetId = null
+    this.referee.reset()
+    this.lastRestartSource = 'normal'
 
     // Position Home players
     for (let i = 0; i < 11; i++) {
       const p = this.simPlayers[i]
+      if (!p.isOnPitch) continue
       const phys = this.playerPhysicsMap.get(p.id)
       const anchor = homeAnchors[i] || { x: 0, y: 0, z: -20 }
       const pos = { x: anchor.x, y: 0, z: Math.min(-1.0, anchor.z) }
@@ -202,6 +234,7 @@ export class SimulationLoop {
     // Position Away players
     for (let i = 0; i < 11; i++) {
       const p = this.simPlayers[11 + i]
+      if (!p.isOnPitch) continue
       const phys = this.playerPhysicsMap.get(p.id)
       const anchor = awayAnchors[i] || { x: 0, y: 0, z: 20 }
       const pos = { x: anchor.x, y: 0, z: Math.max(1.0, anchor.z) }
@@ -220,60 +253,57 @@ export class SimulationLoop {
   }
 
   public setupSetPiece(
-    type: 'THROW_IN' | 'CORNER' | 'GOAL_KICK' | 'FREE_KICK' | 'PENALTY',
+    type: 'THROW_IN' | 'CORNER' | 'GOAL_KICK' | 'FREE_KICK' | 'PENALTY' | 'DROPPED_BALL',
     teamIndex: 0 | 1,
-    position: Vec3
+    position: Vec3,
+    isIndirect: boolean = false
   ): void {
     this.setPieceCooldown = 2.0
     this.pendingOffsideTargetId = null
+    this.lastRestartSource = type === 'CORNER' ? 'corner' : type === 'THROW_IN' ? 'throw_in' : type === 'GOAL_KICK' ? 'goal_kick' : 'normal'
 
     // Stop ball at position
     this.ballPhysics.setPosition({ x: position.x, y: 0.11, z: position.z })
     this.ballPhysics.velocity = { x: 0, y: 0, z: 0 }
 
-    const teamPlayers = this.simPlayers.filter((p) => p.teamIndex === teamIndex && p.isOnPitch)
-    const opponents = this.simPlayers.filter((p) => p.teamIndex !== teamIndex && p.isOnPitch)
-
-    // Select suitable taker
-    let taker: SimPlayer | undefined
-
-    if (type === 'GOAL_KICK') {
-      taker = teamPlayers.find((p) => p.role === 'goalkeeper') || teamPlayers[0]
-    } else if (type === 'PENALTY') {
-      taker = teamPlayers.find((p) => p.role === 'attacker') || teamPlayers[teamPlayers.length - 1]
-    } else if (type === 'CORNER') {
-      taker = [...teamPlayers].sort(
-        (a, b) => b.playerData.attributes.crossing - a.playerData.attributes.crossing
-      )[0]
-    } else {
-      // Throw in or Free kick: closest outfield player
-      taker = [...teamPlayers]
-        .filter((p) => p.role !== 'goalkeeper')
-        .sort((a, b) => vec3.distance(a.position, position) - vec3.distance(b.position, position))[0]
-    }
-
-    if (!taker) taker = teamPlayers[0]
-
-    // Clear everyone else's ball
+    // Clear everyone's ball
     for (const p of this.simPlayers) p.hasBall = false
 
-    // Position taker behind the ball
-    const targetZ = teamIndex === 0 ? 52.5 : -52.5
-    const dirToGoal = vec3.normalize({ x: 0 - position.x, y: 0, z: targetZ - position.z })
-    const takerPos: Vec3 = {
-      x: position.x - dirToGoal.x * 0.6,
-      y: 0,
-      z: position.z - dirToGoal.z * 0.6,
+    let taker: SimPlayer
+    let setPieceResult: SetPieceState
+
+    if (type === 'FREE_KICK') {
+      const res = this.referee.restartManager.setupFreeKick(teamIndex, position, isIndirect, this.simPlayers)
+      taker = res.taker
+      setPieceResult = res.setPiece
+    } else if (type === 'PENALTY') {
+      const res = this.referee.restartManager.setupPenalty(teamIndex, this.simPlayers)
+      taker = res.taker
+      setPieceResult = res.setPiece
+    } else if (type === 'THROW_IN') {
+      const res = this.referee.restartManager.setupThrowIn(teamIndex, position, this.simPlayers)
+      taker = res.taker
+      setPieceResult = res.setPiece
+    } else if (type === 'CORNER') {
+      const res = this.referee.restartManager.setupCorner(teamIndex, position, this.simPlayers)
+      taker = res.taker
+      setPieceResult = res.setPiece
+    } else if (type === 'GOAL_KICK') {
+      const res = this.referee.restartManager.setupGoalKick(teamIndex, this.simPlayers)
+      taker = res.taker
+      setPieceResult = res.setPiece
+    } else {
+      const res = this.referee.restartManager.setupDroppedBall(teamIndex, position, this.simPlayers)
+      taker = res.receiver
+      setPieceResult = res.setPiece
     }
-    const takerRot = Math.atan2(dirToGoal.x, dirToGoal.z)
 
-    taker.position = takerPos
-    taker.rotation = takerRot
-    taker.velocity = { x: 0, y: 0, z: 0 }
-    taker.hasBall = true
-
-    const takerPhys = this.playerPhysicsMap.get(taker.id)
-    takerPhys?.teleport(takerPos, takerRot)
+    // Teleport all physics bodies to their new positions
+    for (const p of this.simPlayers) {
+      if (!p.isOnPitch) continue
+      const phys = this.playerPhysicsMap.get(p.id)
+      phys?.teleport(p.position, p.rotation)
+    }
 
     this.lastTouchedTeam = teamIndex
     this.lastTouchedPlayerId = taker.id
@@ -281,31 +311,6 @@ export class SimulationLoop {
 
     if (teamIndex === 0) {
       this.switchControlledPlayer(taker.id)
-    }
-
-    // Move opponents back to legal distance (9.15m)
-    const requiredDistance = type === 'PENALTY' ? 9.5 : 9.15
-    for (const opp of opponents) {
-      if (type === 'PENALTY' && opp.role === 'goalkeeper') {
-        const oppGoalZ = teamIndex === 0 ? 52.4 : -52.4
-        opp.position = { x: 0, y: 0, z: oppGoalZ }
-        opp.rotation = teamIndex === 0 ? Math.PI : 0
-        const oppPhys = this.playerPhysicsMap.get(opp.id)
-        oppPhys?.teleport(opp.position, opp.rotation)
-        continue
-      }
-
-      const dist = vec3.distance(opp.position, position)
-      if (dist < requiredDistance) {
-        const pushDir = dist > 0.01 ? vec3.normalize(vec3.sub(opp.position, position)) : { x: 0, y: 0, z: teamIndex === 0 ? -1 : 1 }
-        opp.position = {
-          x: clamp(position.x + pushDir.x * (requiredDistance + 1), -33, 33),
-          y: 0,
-          z: clamp(position.z + pushDir.z * (requiredDistance + 1), -51, 51),
-        }
-        const oppPhys = this.playerPhysicsMap.get(opp.id)
-        oppPhys?.teleport(opp.position, opp.rotation)
-      }
     }
 
     const teamName = teamIndex === 0 ? this.homeTeam.name : this.awayTeam.name
@@ -319,20 +324,15 @@ export class SimulationLoop {
     } else if (type === 'GOAL_KICK') {
       this.showAnnouncement('GOAL KICK', teamName, 'goal_kick')
     } else if (type === 'FREE_KICK') {
-      this.showAnnouncement('FREE KICK', teamName, 'foul')
+      this.showAnnouncement(isIndirect ? 'INDIRECT FREE KICK' : 'DIRECT FREE KICK', teamName, 'foul')
     } else if (type === 'PENALTY') {
       this.showAnnouncement('PENALTY KICK!', teamName, 'penalty')
       this.eventLog.addEvent('PENALTY', this.matchClock.getMinute(), teamIndex === 0 ? this.homeTeam.id : this.awayTeam.id, `Penalty awarded to ${teamName}`)
+    } else if (type === 'DROPPED_BALL') {
+      this.showAnnouncement('DROPPED BALL', 'Play restarted by referee', 'info')
     }
 
-    this.currentSetPiece = {
-      type,
-      teamIndex,
-      position,
-      takerId: taker.id,
-      timer: 1.6,
-    }
-
+    this.currentSetPiece = setPieceResult
     this.stateMachine.transition('SET_PIECE')
     this.callbacks.onPhaseChange?.('SET_PIECE')
     this.callbacks.onStatsUpdate?.(this.stats)
@@ -353,6 +353,34 @@ export class SimulationLoop {
     } else {
       this.performPass(false, false, teamIndex === 0 ? 0 : Math.PI)
     }
+  }
+
+  public handleCard(player: SimPlayer, card: 'yellow' | 'red', reason: string): void {
+    const cardResult = this.referee.issueCard(player, card, reason, this.matchClock.getMinute())
+    const teamObj = player.teamIndex === 0 ? this.homeTeam : this.awayTeam
+
+    if (cardResult.cardType === 'yellow') {
+      this.stats.yellowCards[player.teamIndex]++
+      this.eventLog.addEvent('YELLOW_CARD', this.matchClock.getMinute(), teamObj.id, `Yellow card: ${player.playerData.name} (${reason})`, player.id)
+      this.showAnnouncement('YELLOW CARD', `${player.playerData.name} (${teamObj.shortName})`, 'card', 2600, 'yellow', player.playerData.name)
+    } else if (cardResult.cardType === 'second_yellow_red') {
+      this.stats.yellowCards[player.teamIndex]++
+      this.stats.redCards[player.teamIndex]++
+      this.eventLog.addEvent('YELLOW_CARD', this.matchClock.getMinute(), teamObj.id, `Second yellow: ${player.playerData.name}`, player.id)
+      this.eventLog.addEvent('RED_CARD', this.matchClock.getMinute(), teamObj.id, `Red card: ${player.playerData.name} sent off`, player.id)
+      this.showAnnouncement('SECOND YELLOW & RED!', `${player.playerData.name} sent off!`, 'card', 3200, 'red', player.playerData.name)
+    } else {
+      this.stats.redCards[player.teamIndex]++
+      this.eventLog.addEvent('RED_CARD', this.matchClock.getMinute(), teamObj.id, `Red card: ${player.playerData.name} (${reason})`, player.id)
+      this.showAnnouncement('RED CARD!', `${player.playerData.name} sent off!`, 'card', 3200, 'red', player.playerData.name)
+    }
+
+    if (cardResult.isExpelled) {
+      if (player.id === this.controlledPlayerId) {
+        this.switchControlledPlayer()
+      }
+    }
+    this.callbacks.onStatsUpdate?.(this.stats)
   }
 
   public switchControlledPlayer(manualTargetId?: string): void {
@@ -391,7 +419,7 @@ export class SimulationLoop {
   public getBall(): SimBall {
     const ballPos = this.ballPhysics.getPosition()
     const ballVel = this.ballPhysics.getVelocity()
-    const holder = this.simPlayers.find((p) => p.hasBall)
+    const holder = this.simPlayers.find((p) => p.hasBall && p.isOnPitch)
 
     return {
       position: ballPos,
@@ -401,11 +429,12 @@ export class SimulationLoop {
       lastTouchedTeam: this.lastTouchedTeam,
       lastTouchedPlayerId: this.lastTouchedPlayerId,
       isInPlay: true,
+      lastKickType: this.referee.restartManager.isIndirectActive() ? 'indirect_free_kick' : 'normal',
     }
   }
 
   public startChargingShot(): void {
-    const controlled = this.simPlayers.find((p) => p.id === this.controlledPlayerId)
+    const controlled = this.simPlayers.find((p) => p.id === this.controlledPlayerId && p.isOnPitch)
     if (!controlled) return
 
     const distToBall = vec3.distance(controlled.position, this.ballPhysics.getPosition())
@@ -420,7 +449,6 @@ export class SimulationLoop {
   public updateShotCharge(dt: number): void {
     if (!this.isChargingShot) return
     this.shotChargeTime += dt
-    // 0.6s to reach 100%
     this.currentShotPower = clamp(Math.round(20 + (this.shotChargeTime / 0.55) * 80), 20, 100)
     this.callbacks.onShotCharge?.(this.currentShotPower / 100)
   }
@@ -441,29 +469,32 @@ export class SimulationLoop {
   }
 
   public performPass(isThrough: boolean = false, isLofted: boolean = false, aimAngle?: number): void {
-    const controlled = this.simPlayers.find((p) => p.id === this.controlledPlayerId)
+    const controlled = this.simPlayers.find((p) => p.id === this.controlledPlayerId && p.isOnPitch)
     if (!controlled) return
 
     const distToBall = vec3.distance(controlled.position, this.ballPhysics.getPosition())
-    // Allow pass if player has ball OR is within 2.2m of ball (First-time pass)
     if (!controlled.hasBall && distToBall > 2.2) return
 
-    const teammates = this.simPlayers.filter((p) => p.teamIndex === 0)
-    const opponents = this.simPlayers.filter((p) => p.teamIndex === 1)
+    // Double touch check on restart
+    if (this.referee.restartManager.checkDoubleTouch(controlled)) {
+      this.showAnnouncement('DOUBLE TOUCH!', 'Indirect free kick awarded', 'foul', 2200)
+      this.setupSetPiece('FREE_KICK', 1, controlled.position, true)
+      return
+    }
 
+    const teammates = this.simPlayers.filter((p) => p.teamIndex === 0 && p.isOnPitch)
+    const opponents = this.simPlayers.filter((p) => p.teamIndex === 1 && p.isOnPitch)
     const effectiveAngle = aimAngle !== undefined ? aimAngle : controlled.rotation
 
-    const target = this.passingSystem.selectTarget(
-      controlled,
-      teammates,
-      effectiveAngle,
-      opponents
-    )
+    const target = this.passingSystem.selectTarget(controlled, teammates, effectiveAngle, opponents)
 
     // Clear possession
     for (const p of this.simPlayers) p.hasBall = false
     this.lastTouchedTeam = 0
     this.lastTouchedPlayerId = controlled.id
+    this.lastDeliberateKickerId = controlled.id
+    this.isLastTouchDeliberatePlay = true
+    this.isLastTouchSave = false
 
     if (this.currentSetPiece) {
       this.currentSetPiece = null
@@ -479,16 +510,18 @@ export class SimulationLoop {
       }
     }
 
-    if (target) {
-      // Check offside position at moment of pass
-      const isOffside = this.referee.checkOffside(controlled, target, opponents, 0)
-      if (isOffside) {
-        this.pendingOffsideTargetId = target.id
-        this.pendingOffsideTeam = 0
-      } else {
-        this.pendingOffsideTargetId = null
-      }
+    // IFAB Law 11: Snapshot taken at exact pass moment
+    this.referee.offsideEngine.createSnapshot(
+      controlled,
+      teammates,
+      opponents,
+      this.ballPhysics.getPosition(),
+      Date.now(),
+      this.lastRestartSource
+    )
+    this.lastRestartSource = 'normal'
 
+    if (target) {
       if (isLofted) {
         const { velocity, loft } = this.passingSystem.computeLoftedPass(
           controlled.position,
@@ -512,41 +545,51 @@ export class SimulationLoop {
         )
         this.ballPhysics.kick(velocity, 78, 0.02)
       }
-
       this.switchControlledPlayer(target.id)
     } else {
-      // Direct kick in aim direction if no teammate is found
       const kickDir = { x: Math.sin(effectiveAngle), y: 0.05, z: Math.cos(effectiveAngle) }
       this.ballPhysics.kick(kickDir, 75, 0.05)
     }
   }
 
   public performPassToTeammate(targetPlayerId: string): void {
-    const controlled = this.simPlayers.find((p) => p.id === this.controlledPlayerId)
+    const controlled = this.simPlayers.find((p) => p.id === this.controlledPlayerId && p.isOnPitch)
     if (!controlled) return
 
     const distToBall = vec3.distance(controlled.position, this.ballPhysics.getPosition())
     if (!controlled.hasBall && distToBall > 2.4) {
-      // Simply switch control to that teammate if ball is not in range
       this.switchControlledPlayer(targetPlayerId)
       return
     }
 
-    const target = this.simPlayers.find((p) => p.id === targetPlayerId && p.teamIndex === 0)
+    const target = this.simPlayers.find((p) => p.id === targetPlayerId && p.teamIndex === 0 && p.isOnPitch)
     if (!target) return
+
+    if (this.referee.restartManager.checkDoubleTouch(controlled)) {
+      this.showAnnouncement('DOUBLE TOUCH!', 'Indirect free kick awarded', 'foul', 2200)
+      this.setupSetPiece('FREE_KICK', 1, controlled.position, true)
+      return
+    }
 
     for (const p of this.simPlayers) p.hasBall = false
     this.lastTouchedTeam = 0
     this.lastTouchedPlayerId = controlled.id
+    this.lastDeliberateKickerId = controlled.id
+    this.isLastTouchDeliberatePlay = true
+    this.isLastTouchSave = false
 
-    const opponents = this.simPlayers.filter((p) => p.teamIndex === 1)
-    const isOffside = this.referee.checkOffside(controlled, target, opponents, 0)
-    if (isOffside) {
-      this.pendingOffsideTargetId = target.id
-      this.pendingOffsideTeam = 0
-    } else {
-      this.pendingOffsideTargetId = null
-    }
+    const teammates = this.simPlayers.filter((p) => p.teamIndex === 0 && p.isOnPitch)
+    const opponents = this.simPlayers.filter((p) => p.teamIndex === 1 && p.isOnPitch)
+
+    this.referee.offsideEngine.createSnapshot(
+      controlled,
+      teammates,
+      opponents,
+      this.ballPhysics.getPosition(),
+      Date.now(),
+      this.lastRestartSource
+    )
+    this.lastRestartSource = 'normal'
 
     const velocity = this.passingSystem.computeGroundPass(
       controlled.position,
@@ -559,17 +602,24 @@ export class SimulationLoop {
   }
 
   public performShot(power: number = 80, aimAngle?: number): void {
-    const controlled = this.simPlayers.find((p) => p.id === this.controlledPlayerId)
+    const controlled = this.simPlayers.find((p) => p.id === this.controlledPlayerId && p.isOnPitch)
     if (!controlled) return
 
     const distToBall = vec3.distance(controlled.position, this.ballPhysics.getPosition())
-    // Allow first-time shots if close to ball (< 2.4m)
     if (!controlled.hasBall && distToBall > 2.4) return
+
+    if (this.referee.restartManager.checkDoubleTouch(controlled)) {
+      this.showAnnouncement('DOUBLE TOUCH!', 'Indirect free kick awarded', 'foul', 2200)
+      this.setupSetPiece('FREE_KICK', 1, controlled.position, true)
+      return
+    }
 
     for (const p of this.simPlayers) p.hasBall = false
     this.lastTouchedTeam = 0
     this.lastTouchedPlayerId = controlled.id
-    this.pendingOffsideTargetId = null
+    this.lastDeliberateKickerId = controlled.id
+    this.isLastTouchDeliberatePlay = true
+    this.isLastTouchSave = false
 
     if (this.currentSetPiece) {
       this.currentSetPiece = null
@@ -585,6 +635,18 @@ export class SimulationLoop {
       }
     }
 
+    const teammates = this.simPlayers.filter((p) => p.teamIndex === 0 && p.isOnPitch)
+    const opponents = this.simPlayers.filter((p) => p.teamIndex === 1 && p.isOnPitch)
+    this.referee.offsideEngine.createSnapshot(
+      controlled,
+      teammates,
+      opponents,
+      this.ballPhysics.getPosition(),
+      Date.now(),
+      this.lastRestartSource
+    )
+    this.lastRestartSource = 'normal'
+
     const oppGoalCenter: Vec3 = { x: 0, y: 1.2, z: 52.5 }
     const shot = this.shootingSystem.computeShot(
       controlled,
@@ -595,7 +657,6 @@ export class SimulationLoop {
       aimAngle
     )
 
-    // Dynamic loft according to power
     const loft = power < 52 ? 0.04 : power > 82 ? 0.28 : 0.18
     this.ballPhysics.kick(shot.velocity, shot.power, loft, shot.spin)
 
@@ -607,13 +668,12 @@ export class SimulationLoop {
   }
 
   public performTackle(): void {
-    const controlled = this.simPlayers.find((p) => p.id === this.controlledPlayerId)
+    const controlled = this.simPlayers.find((p) => p.id === this.controlledPlayerId && p.isOnPitch)
     if (!controlled) return
 
     const ballPos = this.ballPhysics.getPosition()
     const distToBall = vec3.distance(controlled.position, ballPos)
 
-    // Lunge towards ball
     const toBall = vec3.sub(ballPos, controlled.position)
     if (vec3.length(toBall) > 0.1) {
       const lungeDir = vec3.normalize(toBall)
@@ -621,8 +681,7 @@ export class SimulationLoop {
       controlled.position.z += lungeDir.z * 0.42
     }
 
-    // Check victim for potential foul
-    const opponents = this.simPlayers.filter((p) => p.teamIndex === 1)
+    const opponents = this.simPlayers.filter((p) => p.teamIndex === 1 && p.isOnPitch)
     const opponentHolder = opponents.find((p) => p.hasBall)
     const nearestOpp = [...opponents].sort(
       (a, b) => vec3.distance(controlled.position, a.position) - vec3.distance(controlled.position, b.position)
@@ -630,19 +689,18 @@ export class SimulationLoop {
     const victim = opponentHolder || nearestOpp
 
     if (victim) {
-      const foulDecision = this.referee.checkTackle(controlled, victim, distToBall)
+      const foulDecision = this.referee.checkTackle(controlled, victim, distToBall, true)
       if (foulDecision.type) {
         this.stats.fouls[0] += 1
-        if (foulDecision.card === 'yellow') {
-          this.stats.yellowCards[0] += 1
-          this.eventLog.addEvent('YELLOW_CARD', this.matchClock.getMinute(), this.homeTeam.id, `Yellow card: ${controlled.playerData.name}`)
+
+        if (foulDecision.card) {
+          this.handleCard(controlled, foulDecision.card, foulDecision.message || 'Tackle infraction')
         }
-        this.callbacks.onStatsUpdate?.(this.stats)
 
         if (foulDecision.type === 'penalty') {
           this.setupSetPiece('PENALTY', 1, foulDecision.position || { x: 0, y: 0.11, z: -41.5 })
         } else {
-          this.setupSetPiece('FREE_KICK', 1, foulDecision.position || victim.position)
+          this.setupSetPiece('FREE_KICK', 1, foulDecision.position || victim.position, foulDecision.isIndirect)
         }
         return
       }
@@ -689,9 +747,44 @@ export class SimulationLoop {
       return
     }
 
-    // Auto-progress kick-off for AI if player doesn't interact after 1.5 seconds
+    // Handle referee advantage window
+    const activeAdv = this.referee.foulDetection.getActiveAdvantage()
+    if (activeAdv && activeAdv.active) {
+      activeAdv.duration -= clampedDt
+      const victimTeamHasBall = this.simPlayers.some((p) => p.teamIndex !== activeAdv.foulTeam && p.hasBall && p.isOnPitch)
+
+      if (activeAdv.duration <= 0) {
+        // Advantage materialized!
+        if (activeAdv.card) {
+          const offender = this.simPlayers.find((p) => p.id === activeAdv.offenderId)
+          if (offender) this.handleCard(offender, activeAdv.card, activeAdv.foulType)
+        }
+        this.referee.foulDetection.clearAdvantage()
+        if (this.stateMachine.getPhase() === 'ADVANTAGE') {
+          this.stateMachine.transition('PLAYING')
+          this.callbacks.onPhaseChange?.('PLAYING')
+        }
+      } else if (!victimTeamHasBall && this.simPlayers.some((p) => p.teamIndex === activeAdv.foulTeam && p.hasBall && p.isOnPitch)) {
+        // Advantage failed: call back foul
+        this.referee.foulDetection.clearAdvantage()
+        const victimTeam: 0 | 1 = activeAdv.foulTeam === 0 ? 1 : 0
+        if (activeAdv.card) {
+          const offender = this.simPlayers.find((p) => p.id === activeAdv.offenderId)
+          if (offender) this.handleCard(offender, activeAdv.card, activeAdv.foulType)
+        }
+        this.showAnnouncement('FOUL CALLED BACK', 'Advantage did not materialize', 'foul', 2200)
+        if (activeAdv.isPenalty) {
+          this.setupSetPiece('PENALTY', victimTeam, activeAdv.offencePosition)
+        } else {
+          this.setupSetPiece('FREE_KICK', victimTeam, activeAdv.offencePosition)
+        }
+        return
+      }
+    }
+
+    // Auto-progress kick-off for AI
     if (currentPhase === 'KICK_OFF') {
-      const kicker = this.simPlayers.find((p) => p.hasBall)
+      const kicker = this.simPlayers.find((p) => p.hasBall && p.isOnPitch)
       if (kicker && kicker.teamIndex === 1) {
         this.aiKickOffTimer -= clampedDt
         if (this.aiKickOffTimer <= 0) {
@@ -703,7 +796,6 @@ export class SimulationLoop {
     // Handle Set-Piece Phase
     if (currentPhase === 'SET_PIECE' && this.currentSetPiece) {
       this.currentSetPiece.timer -= clampedDt
-      // If AI team set piece and timer expired, AI automatically takes it
       if (this.currentSetPiece.teamIndex === 1 && this.currentSetPiece.timer <= 0) {
         if (this.currentSetPiece.type === 'PENALTY') {
           this.executeSetPiece('shot')
@@ -725,14 +817,14 @@ export class SimulationLoop {
     }
 
     // Check half-time / full-time
-    if (this.matchClock.isHalfOver() && this.matchClock.getHalf() === 1 && currentPhase === 'PLAYING') {
+    if (this.matchClock.isHalfOver() && this.matchClock.getHalf() === 1 && (currentPhase === 'PLAYING' || currentPhase === 'ADVANTAGE')) {
       this.stateMachine.transition('HALF_TIME')
       this.callbacks.onPhaseChange?.('HALF_TIME')
       this.eventLog.addEvent('HALF_TIME', 45, this.homeTeam.id, 'Half Time')
       return
     }
 
-    if (this.matchClock.isMatchOver() && currentPhase === 'PLAYING') {
+    if (this.matchClock.isMatchOver() && (currentPhase === 'PLAYING' || currentPhase === 'ADVANTAGE')) {
       this.stateMachine.transition('FULL_TIME')
       this.callbacks.onPhaseChange?.('FULL_TIME')
       this.eventLog.addEvent('FULL_TIME', 90, this.homeTeam.id, 'Full Time')
@@ -749,12 +841,15 @@ export class SimulationLoop {
     this.ballPhysics.update(clampedDt)
     const simBall = this.getBall()
 
-    // 1. Goal detection
-    const scoringTeam = this.goalDetector.check(simBall, prevBallPos, Date.now())
+    // 1. Goal detection with IFAB Law 10 & Law 13/15 rules
+    const isIndirectPlay = this.referee.restartManager.isIndirectActive()
+    const isThrowInDirect = this.lastRestartSource === 'throw_in' && !this.simPlayers.some((p) => p.hasBall)
+    const scoringTeam = this.goalDetector.check(simBall, prevBallPos, Date.now(), isIndirectPlay, isThrowInDirect)
+
     if (scoringTeam !== null) {
       this.score[scoringTeam] += 1
       this.lastScoringTeam = scoringTeam
-      const scorer = this.simPlayers.find((p) => p.id === this.lastTouchedPlayerId)
+      const scorer = this.simPlayers.find((p) => p.id === this.lastTouchedPlayerId && p.isOnPitch)
       const scoringTeamObj = scoringTeam === 0 ? this.homeTeam : this.awayTeam
 
       this.eventLog.addEvent(
@@ -790,7 +885,7 @@ export class SimulationLoop {
       }
     }
 
-    // 3. Defender Shot Blocking & Goalkeeper Saves
+    // 3. Defender Shot Blocking, Handballs & Goalkeeper Saves
     const ballSpeed = vec3.length(this.ballPhysics.velocity)
     if (ballSpeed > 13.0) {
       const isTowardAwayGoal = this.ballPhysics.velocity.z > 8.0
@@ -798,15 +893,30 @@ export class SimulationLoop {
 
       if (isTowardAwayGoal || isTowardHomeGoal) {
         const defendingTeamIndex: 0 | 1 = isTowardAwayGoal ? 1 : 0
-        const defenders = this.simPlayers.filter((p) => p.teamIndex === defendingTeamIndex && p.role !== 'goalkeeper')
-        const gk = this.simPlayers.find((p) => p.teamIndex === defendingTeamIndex && p.role === 'goalkeeper')
+        const defenders = this.simPlayers.filter((p) => p.teamIndex === defendingTeamIndex && p.role !== 'goalkeeper' && p.isOnPitch)
+        const gk = this.simPlayers.find((p) => p.teamIndex === defendingTeamIndex && p.role === 'goalkeeper' && p.isOnPitch)
         const currentBallPos = this.ballPhysics.getPosition()
 
-        // Defender block check
+        // Defender block & Handball check
         if (currentBallPos.y < 1.6) {
           for (const def of defenders) {
             const dist = vec3.distance(def.position, currentBallPos)
             if (dist < 1.1) {
+              // Check handball rule (unnatural arm block)
+              const handball = this.referee.foulDetection.evaluateHandball(def, simBall, Math.random() < 0.12)
+              if (handball && handball.isFoul) {
+                this.stats.fouls[def.teamIndex]++
+                if (handball.card) this.handleCard(def, handball.card, handball.reason)
+                this.showAnnouncement('HANDBALL!', handball.reason, 'foul', 2400)
+                if (handball.isPenalty) {
+                  this.setupSetPiece('PENALTY', defendingTeamIndex === 0 ? 1 : 0, handball.offencePosition)
+                } else {
+                  this.setupSetPiece('FREE_KICK', defendingTeamIndex === 0 ? 1 : 0, handball.offencePosition)
+                }
+                return
+              }
+
+              // Normal legal block
               const blockChance = def.playerData.attributes.defending / 120
               if (Math.random() < blockChance) {
                 this.ballPhysics.velocity.x = (Math.random() - 0.5) * 8
@@ -814,6 +924,8 @@ export class SimulationLoop {
                 this.ballPhysics.velocity.z = -this.ballPhysics.velocity.z * 0.35
                 this.lastTouchedTeam = defendingTeamIndex
                 this.lastTouchedPlayerId = def.id
+                this.isLastTouchSave = true
+                this.isLastTouchDeliberatePlay = false
                 this.showAnnouncement('SHOT BLOCKED!', `${def.playerData.name} blocks!`, 'info', 1800)
                 break
               }
@@ -828,6 +940,8 @@ export class SimulationLoop {
           if (distToGk < saveReach && this.ballPhysics.velocity.y < 2.6) {
             this.stats.saves[defendingTeamIndex] += 1
             this.callbacks.onStatsUpdate?.(this.stats)
+            this.isLastTouchSave = true
+            this.isLastTouchDeliberatePlay = false
 
             const canCatch = ballSpeed < 20.0 && gk.playerData.attributes.gkHandling > 80
             if (canCatch) {
@@ -852,8 +966,8 @@ export class SimulationLoop {
     }
 
     // Possession & Outfield player updates
-    const homePlayers = this.simPlayers.filter((p) => p.teamIndex === 0)
-    const awayPlayers = this.simPlayers.filter((p) => p.teamIndex === 1)
+    const homePlayers = this.simPlayers.filter((p) => p.teamIndex === 0 && p.isOnPitch)
+    const awayPlayers = this.simPlayers.filter((p) => p.teamIndex === 1 && p.isOnPitch)
 
     const homeHasPossession = homePlayers.some((p) => p.hasBall)
     const awayHasPossession = awayPlayers.some((p) => p.hasBall)
@@ -889,6 +1003,20 @@ export class SimulationLoop {
         ballHolder.hasBall = false
         this.lastTouchedTeam = 1
         this.lastTouchedPlayerId = ballHolder.id
+        this.lastDeliberateKickerId = ballHolder.id
+        this.isLastTouchDeliberatePlay = true
+        this.isLastTouchSave = false
+
+        this.referee.offsideEngine.createSnapshot(
+          ballHolder,
+          awayPlayers,
+          homePlayers,
+          this.ballPhysics.getPosition(),
+          Date.now(),
+          this.lastRestartSource
+        )
+        this.lastRestartSource = 'normal'
+
         this.ballPhysics.kick(awayAIResult.aiKick.velocity, 78, awayAIResult.aiKick.loft ?? 0.1)
         if (awayAIResult.aiKick.isShot) {
           this.stats.shots[1] += 1
@@ -897,17 +1025,19 @@ export class SimulationLoop {
       }
     }
 
-    // Execute Away AI tackles
+    // Execute Away AI tackles with full Law 12 evaluation
     if (awayAIResult.aiTackles && awayAIResult.aiTackles.length > 0) {
-      const userControlled = this.simPlayers.find((p) => p.isControlled)
+      const userControlled = this.simPlayers.find((p) => p.isControlled && p.isOnPitch)
       if (userControlled && userControlled.hasBall) {
         const tackler = awayPlayers.find((p) => awayAIResult.aiTackles.includes(p.id))
         if (tackler) {
           const distToBall = vec3.distance(tackler.position, this.ballPhysics.getPosition())
-          const foulDecision = this.referee.checkTackle(tackler, userControlled, distToBall)
+          const foulDecision = this.referee.checkTackle(tackler, userControlled, distToBall, true)
           if (foulDecision.type) {
             this.stats.fouls[1] += 1
-            if (foulDecision.card === 'yellow') this.stats.yellowCards[1] += 1
+            if (foulDecision.card) {
+              this.handleCard(tackler, foulDecision.card, foulDecision.message || 'Tackle offence')
+            }
             this.callbacks.onStatsUpdate?.(this.stats)
             if (foulDecision.type === 'penalty') {
               this.setupSetPiece('PENALTY', 0, foulDecision.position || { x: 0, y: 0.11, z: 41.5 })
@@ -916,7 +1046,6 @@ export class SimulationLoop {
             }
             return
           } else if (distToBall < 1.6) {
-            // Dispossess user cleanly
             userControlled.hasBall = false
             tackler.hasBall = true
             this.lastTouchedTeam = 1
@@ -928,15 +1057,16 @@ export class SimulationLoop {
     }
 
     // Update each player physics and ball-player interactions
-    let currentHolder = this.simPlayers.find((p) => p.hasBall)
+    let currentHolder = this.simPlayers.find((p) => p.hasBall && p.isOnPitch)
     const currentBallPos = this.ballPhysics.getPosition()
 
     for (const player of this.simPlayers) {
+      if (!player.isOnPitch) continue
+
       const phys = this.playerPhysicsMap.get(player.id)
       if (!phys) continue
 
       if (player.isControlled) {
-        // Controlled by user input
         phys.update(clampedDt, inputMove, isSprinting, player.playerData.attributes)
         if (vec3.length(inputMove) > 0.05 && this.kickOffPending) {
           this.kickOffPending = false
@@ -946,40 +1076,73 @@ export class SimulationLoop {
           }
         }
       } else {
-        // Driven by AI target position
         const toTarget = vec3.sub(player.targetPosition, player.position)
         const moveDir = vec3.length(toTarget) > 0.4 ? vec3.normalize(toTarget) : { x: 0, y: 0, z: 0 }
         phys.update(clampedDt, moveDir, player.isSprinting, player.playerData.attributes)
       }
 
-      // Sync sim state from physics
       player.position = phys.getPosition()
       player.velocity = phys.getVelocity()
       player.rotation = phys.getRotation()
       player.stamina = phys.getStamina()
 
-      // Smooth ball possession acquisition
+      // Ball possession acquisition & Rules evaluation
       if (!currentHolder && currentBallPos.y < 1.6) {
         const distToBall = vec3.distance(player.position, currentBallPos)
         const pickupRadius = player.isControlled ? 1.7 : 1.3
         if (distToBall < pickupRadius) {
-          // Offside check upon touching the ball!
-          if (this.pendingOffsideTargetId && player.id === this.pendingOffsideTargetId) {
-            this.pendingOffsideTargetId = null
+          // Double-touch restart check
+          if (this.referee.restartManager.checkDoubleTouch(player)) {
+            const oppTeam: 0 | 1 = player.teamIndex === 0 ? 1 : 0
+            this.showAnnouncement('DOUBLE TOUCH!', 'Indirect free kick awarded', 'foul', 2200)
+            this.setupSetPiece('FREE_KICK', oppTeam, player.position, true)
+            return
+          }
+
+          // Offside active involvement check (IFAB Law 11)
+          const offsideDecision = this.referee.offsideEngine.evaluateInvolvement(
+            player,
+            this.isLastTouchDeliberatePlay,
+            this.isLastTouchSave
+          )
+          if (offsideDecision.isOffside) {
             const defendingTeam: 0 | 1 = player.teamIndex === 0 ? 1 : 0
             this.stats.offsides[player.teamIndex] += 1
             this.callbacks.onStatsUpdate?.(this.stats)
             this.showAnnouncement('OFFSIDE!', `${player.playerData.name} was offside`, 'offside', 2200)
-            this.eventLog.addEvent('OFFSIDE', this.matchClock.getMinute(), player.teamIndex === 0 ? this.homeTeam.id : this.awayTeam.id, `${player.playerData.name} caught offside`)
-            this.setupSetPiece('FREE_KICK', defendingTeam, player.position)
+            this.eventLog.addEvent('OFFSIDE', this.matchClock.getMinute(), player.teamIndex === 0 ? this.homeTeam.id : this.awayTeam.id, `${player.playerData.name} caught offside`, player.id)
+            this.setupSetPiece('FREE_KICK', defendingTeam, offsideDecision.offencePosition || player.position, true)
             return
           }
 
-          if (this.pendingOffsideTeam !== null && player.teamIndex !== this.pendingOffsideTeam) {
-            // Defending player touched ball -> offside play ends
-            this.pendingOffsideTargetId = null
+          // Goalkeeper handling of back-pass check (IFAB Law 12.2)
+          if (player.role === 'goalkeeper' && this.lastDeliberateKickerId) {
+            const lastKicker = this.simPlayers.find((p) => p.id === this.lastDeliberateKickerId) || null
+            const backPassFoul = this.referee.foulDetection.evaluateBackPass(player, lastKicker, true)
+            if (backPassFoul && backPassFoul.isFoul) {
+              const oppTeam: 0 | 1 = player.teamIndex === 0 ? 1 : 0
+              this.stats.fouls[player.teamIndex]++
+              this.callbacks.onStatsUpdate?.(this.stats)
+              this.showAnnouncement('BACK-PASS INFRACTION!', 'Indirect free kick in box', 'foul', 2400)
+              this.setupSetPiece('FREE_KICK', oppTeam, backPassFoul.offencePosition, true)
+              return
+            }
           }
 
+          // Goalkeeper handling outside box check
+          if (player.role === 'goalkeeper') {
+            const gkHandlingFoul = this.referee.foulDetection.evaluateHandball(player, simBall, false)
+            if (gkHandlingFoul && gkHandlingFoul.isFoul) {
+              const oppTeam: 0 | 1 = player.teamIndex === 0 ? 1 : 0
+              this.stats.fouls[player.teamIndex]++
+              if (gkHandlingFoul.card) this.handleCard(player, gkHandlingFoul.card, gkHandlingFoul.reason)
+              this.showAnnouncement('HANDBALL BY KEEPER!', 'Direct free kick outside box', 'foul', 2400)
+              this.setupSetPiece('FREE_KICK', oppTeam, gkHandlingFoul.offencePosition, false)
+              return
+            }
+          }
+
+          this.referee.restartManager.registerBallTouch(player.id)
           player.hasBall = true
           currentHolder = player
           this.lastTouchedTeam = player.teamIndex
@@ -989,7 +1152,7 @@ export class SimulationLoop {
       }
     }
 
-    // If a player has ball possession, lock ball right at player's feet
+    // Lock ball at player's feet
     if (currentHolder) {
       const facingAngle = currentHolder.rotation
       const dribbleDist = 0.52
@@ -1001,10 +1164,10 @@ export class SimulationLoop {
     }
 
     // Calculate intended pass target for visual feedback
-    const controlled = this.simPlayers.find((p) => p.id === this.controlledPlayerId)
+    const controlled = this.simPlayers.find((p) => p.id === this.controlledPlayerId && p.isOnPitch)
     if (controlled && (controlled.hasBall || vec3.distance(controlled.position, currentBallPos) < 2.5)) {
-      const teammates = this.simPlayers.filter((p) => p.teamIndex === 0)
-      const opponents = this.simPlayers.filter((p) => p.teamIndex === 1)
+      const teammates = this.simPlayers.filter((p) => p.teamIndex === 0 && p.isOnPitch)
+      const opponents = this.simPlayers.filter((p) => p.teamIndex === 1 && p.isOnPitch)
       const bestTarget = this.passingSystem.selectTarget(controlled, teammates, controlled.rotation, opponents)
       this.intendedPassTargetId = bestTarget ? bestTarget.id : null
     } else {
@@ -1012,9 +1175,6 @@ export class SimulationLoop {
     }
   }
 
-  /**
-   * Resumes gameplay after a goal celebration or kick-off upon user interaction or timer expiry.
-   */
   public resumeFromGoal(): void {
     const curPhase = this.stateMachine.getPhase()
     if (curPhase === 'GOAL_CELEBRATION' || curPhase === 'KICK_OFF' || this.kickOffPending) {
@@ -1034,11 +1194,10 @@ export class SimulationLoop {
         this.callbacks.onPhaseChange?.('PLAYING')
       }
 
-      // If Bot (Away Team 1) has kickoff, execute pass backward to an AI teammate immediately
-      const kicker = this.simPlayers.find((p) => p.hasBall)
+      const kicker = this.simPlayers.find((p) => p.hasBall && p.isOnPitch)
       if (kicker && kicker.teamIndex === 1) {
         kicker.hasBall = false
-        const teammates = this.simPlayers.filter((p) => p.teamIndex === 1 && p.id !== kicker.id && p.position.z > 5)
+        const teammates = this.simPlayers.filter((p) => p.teamIndex === 1 && p.id !== kicker.id && p.position.z > 5 && p.isOnPitch)
         const target = teammates[0] || this.simPlayers[15]
         const toTarget = vec3.sub(target.position, kicker.position)
         const dir = vec3.normalize(toTarget)
@@ -1057,6 +1216,23 @@ export class SimulationLoop {
     this.callbacks.onPhaseChange?.('KICK_OFF')
   }
 
+  public startPenaltyShootout(): PenaltyShootoutState {
+    const shootout = this.referee.restartManager.startShootout()
+    this.stateMachine.transition('PENALTY_SHOOTOUT')
+    this.callbacks.onPhaseChange?.('PENALTY_SHOOTOUT')
+    this.showAnnouncement('PENALTY SHOOTOUT', 'Match will be decided on penalties', 'penalty', 3000)
+    return shootout
+  }
+
+  public getOffsideLineZ(): number | null {
+    const controlled = this.simPlayers.find((p) => p.id === this.controlledPlayerId && p.isOnPitch)
+    const attackingTeam: 0 | 1 = controlled?.teamIndex ?? 0
+    const defendingTeam: 0 | 1 = attackingTeam === 0 ? 1 : 0
+    const defenders = this.simPlayers.filter((p) => p.teamIndex === defendingTeam && p.isOnPitch)
+    if (defenders.length < 2) return null
+    return this.referee.offsideEngine.getSecondLastDefenderZ(defenders, attackingTeam)
+  }
+
   public reset(): void {
     this.score = [0, 0]
     this.currentSetPiece = null
@@ -1065,8 +1241,13 @@ export class SimulationLoop {
     this.isChargingShot = false
     this.shotChargeTime = 0
     this.currentShotPower = 0
+    this.lastRestartSource = 'normal'
+    this.isLastTouchSave = false
+    this.isLastTouchDeliberatePlay = false
+    this.lastDeliberateKickerId = null
     this.matchClock.reset()
     this.stateMachine.reset()
+    this.referee.reset()
     this.initPlayers()
     this.setupKickOff(0)
   }

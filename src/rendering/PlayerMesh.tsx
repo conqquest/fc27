@@ -109,7 +109,7 @@ export const PlayerMesh: React.FC<PlayerMeshProps> = ({
   }, [jerseyTexture, kit.colors.primary])
 
   useFrame(({ clock }) => {
-    if (!groupRef.current) return
+    if (!groupRef.current || !player.isOnPitch) return
 
     // Position and rotation
     groupRef.current.position.set(player.position.x, player.position.y, player.position.z)
@@ -166,6 +166,10 @@ export const PlayerMesh: React.FC<PlayerMeshProps> = ({
       }
     }
   })
+
+  if (!player.isOnPitch) {
+    return null
+  }
 
   return (
     <group
