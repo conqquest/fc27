@@ -20,6 +20,7 @@ import { PassingSystem } from './possession/PassingSystem'
 import { ShootingSystem } from './possession/ShootingSystem'
 import { PossessionTracker } from './possession/PossessionTracker'
 import { TeamAI } from './ai/TeamAI'
+import { PlayerSwitchController } from './ai/PlayerSwitchController'
 import { MatchEventLog } from './events/MatchEventLog'
 import { vec3, clamp } from '../utils/math'
 
@@ -43,6 +44,7 @@ export class SimulationLoop {
   public shootingSystem = new ShootingSystem()
   public possessionTracker = new PossessionTracker()
   public teamAI = new TeamAI()
+  public playerSwitchController = new PlayerSwitchController()
   public eventLog = new MatchEventLog()
 
   public homeTeam: Team
@@ -57,6 +59,10 @@ export class SimulationLoop {
   public intendedPassTargetId: string | null = null
   public currentSetPiece: SetPieceState | null = null
   public currentAnnouncement: MatchAnnouncement | null = null
+
+  // Teammate secondary pressure and difficulty
+  public isTeammatePressureActive: boolean = false
+  public currentDifficulty: string = 'medium'
 
   // Shot charging state
   public isChargingShot: boolean = false
@@ -103,11 +109,13 @@ export class SimulationLoop {
     homeTeam: Team,
     awayTeam: Team,
     matchDurationMins = 5,
-    callbacks: SimulationCallbacks = {}
+    callbacks: SimulationCallbacks = {},
+    difficulty: string = 'medium'
   ) {
     this.homeTeam = homeTeam
     this.awayTeam = awayTeam
     this.callbacks = callbacks
+    this.currentDifficulty = difficulty
     this.matchClock = new MatchClock(matchDurationMins)
 
     this.initPlayers()
@@ -383,6 +391,14 @@ export class SimulationLoop {
     this.callbacks.onStatsUpdate?.(this.stats)
   }
 
+  public setTeammatePressure(active: boolean): void {
+    this.isTeammatePressureActive = active
+  }
+
+  public setDifficulty(difficulty: string): void {
+    this.currentDifficulty = difficulty
+  }
+
   public switchControlledPlayer(manualTargetId?: string): void {
     const homePlayers = this.simPlayers.filter((p) => p.teamIndex === 0 && p.isOnPitch)
 
@@ -396,18 +412,14 @@ export class SimulationLoop {
       }
     }
 
-    // Auto-switch to outfield player closest to the ball
-    let bestPlayer: SimPlayer | null = null
-    let minDist = Infinity
-
-    for (const p of homePlayers) {
-      if (p.role === 'goalkeeper') continue
-      const dist = vec3.distance(p.position, this.ballPhysics.getPosition())
-      if (dist < minDist) {
-        minDist = dist
-        bestPlayer = p
-      }
-    }
+    // Intelligent tactical defender selection
+    const simBall = this.getBall()
+    const bestPlayer = this.playerSwitchController.selectBestDefender(
+      homePlayers,
+      simBall,
+      this.controlledPlayerId,
+      -52.5
+    )
 
     if (bestPlayer) {
       for (const p of this.simPlayers) p.isControlled = false
@@ -984,7 +996,9 @@ export class SimulationLoop {
       simBall,
       this.homeTeam.tactics,
       Date.now(),
-      homeHasPossession
+      homeHasPossession,
+      this.currentDifficulty,
+      this.isTeammatePressureActive
     )
 
     const awayAIResult = this.teamAI.updateTeam(
@@ -993,7 +1007,9 @@ export class SimulationLoop {
       simBall,
       this.awayTeam.tactics,
       Date.now(),
-      awayHasPossession
+      awayHasPossession,
+      this.currentDifficulty,
+      false
     )
 
     // Execute Away AI kicks (passes / shots)
@@ -1017,7 +1033,8 @@ export class SimulationLoop {
         )
         this.lastRestartSource = 'normal'
 
-        this.ballPhysics.kick(awayAIResult.aiKick.velocity, 78, awayAIResult.aiKick.loft ?? 0.1)
+        const loft = awayAIResult.aiKick.loft ?? (awayAIResult.aiKick.isShot ? 0.18 : 0.04)
+        this.ballPhysics.kick(awayAIResult.aiKick.velocity, 80, loft)
         if (awayAIResult.aiKick.isShot) {
           this.stats.shots[1] += 1
           this.callbacks.onStatsUpdate?.(this.stats)
@@ -1248,6 +1265,8 @@ export class SimulationLoop {
     this.matchClock.reset()
     this.stateMachine.reset()
     this.referee.reset()
+    this.playerSwitchController.reset()
+    this.isTeammatePressureActive = false
     this.initPlayers()
     this.setupKickOff(0)
   }
