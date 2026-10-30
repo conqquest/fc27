@@ -404,6 +404,8 @@ export default function MatchScene() {
         announcement={announcement}
         shotPower={shotPower}
         isSprinting={virtualSprint}
+        showOffsideLine={showOffsideLine}
+        onToggleOffsideLine={() => setShowOffsideLine((prev) => !prev)}
         onPauseToggle={() => {
           const curPhase = sim.stateMachine.getPhase()
           if (curPhase !== 'PAUSED') {

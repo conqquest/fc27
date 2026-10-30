@@ -69,8 +69,9 @@ export class FoulDetection {
     // victim facing angle is victim.rotation
     const tacklerToVictim = vec3.sub(victim.position, tackler.position)
     const tacklerApproachAngle = Math.atan2(tacklerToVictim.x, tacklerToVictim.z)
-    const angleDiff = Math.abs(tacklerApproachAngle - victim.rotation) % (Math.PI * 2)
-    const isFromBehind = angleDiff < 0.95 // Tackled in the back
+    let angleDiff = Math.abs(tacklerApproachAngle - victim.rotation) % (Math.PI * 2)
+    if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff
+    const isFromBehind = angleDiff < 0.6 // Directly behind victim
 
     const tacklerSpeed = vec3.length(tackler.velocity)
     const isHighSpeed = tacklerSpeed > 4.5
@@ -83,7 +84,7 @@ export class FoulDetection {
       // Serious foul play: dangerous tackle from behind with excessive force
       severity = 'excessive_force'
       card = 'red'
-    } else if (isSlideTackle || (isFromBehind && distToBall > 1.1) || (isHighSpeed && distToBall > 1.3)) {
+    } else if (isSlideTackle || (isHighSpeed && distToBall > 1.4)) {
       // Reckless challenge: disregard to the danger or stopping promising attack
       severity = 'reckless'
       card = 'yellow'
@@ -168,9 +169,9 @@ export class FoulDetection {
 
     // Outfield player handball
     // Happens when player blocks shot/cross with unnatural silhouette
-    if (isDeliberateBlock && ball.position.y > 0.4 && ball.position.y < 1.8) {
-      const dist = vec3.distance(player.position, ball.position)
-      if (dist < 0.95) {
+    if (isDeliberateBlock && ball.position.y >= 0.3 && ball.position.y <= 2.2) {
+      const horizontalDist = Math.hypot(player.position.x - ball.position.x, player.position.z - ball.position.z)
+      if (horizontalDist < 1.35) {
         const isPenalty = this.isInsidePenaltyBox(player.position, player.teamIndex)
         return {
           isFoul: true,

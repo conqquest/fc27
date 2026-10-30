@@ -19,7 +19,7 @@ interface MatchStoreState {
   phase: MatchPhase
   score: [number, number]
   minute: number
-  half: 1 | 2
+  half: 1 | 2 | 3 | 4
   events: MatchEvent[]
   stats: MatchStats
   controlledPlayerId: string | null
@@ -31,7 +31,7 @@ interface MatchStoreState {
   setPhase: (phase: MatchPhase) => void
   addGoal: (teamIndex: 0 | 1) => void
   setMinute: (m: number) => void
-  setHalf: (h: 1 | 2) => void
+  setHalf: (h: 1 | 2 | 3 | 4) => void
   addEvent: (event: MatchEvent) => void
   updateStats: (stats: Partial<MatchStats>) => void
   setControlled: (id: string | null) => void

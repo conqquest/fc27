@@ -86,5 +86,10 @@ test.describe('FC27 Football Simulator E2E Flow', () => {
     // 4. Test clicking action button does not throw or break canvas
     await page.click('button:has-text("PASS")')
     await expect(page.locator('canvas').first()).toBeVisible()
+
+    // 5. Test IFAB Offside Line Debug Toggle
+    await expect(page.locator('button:has-text("OFFSIDE LINE")')).toBeVisible()
+    await page.click('button:has-text("OFFSIDE LINE")')
+    await page.click('button:has-text("OFFSIDE LINE")')
   })
 })
